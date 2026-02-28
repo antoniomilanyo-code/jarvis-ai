@@ -15,14 +15,17 @@
 
 const JarvisBrain = (function () {
 
+  // ───────────────────────────────────────────────────
+  //  CONVERSATION CONTEXT — short-term memory
+  // ───────────────────────────────────────────────────
   const context = {
-    recentMessages: [],
-    currentTopic: null,
-    lastIntent: null,
-    lastEntityName: null,
-    pendingConfirmation: null,
-    mood: 'neutral',
-    conversationDepth: 0,
+    recentMessages: [],      // last 10 messages for context
+    currentTopic: null,      // what we're talking about
+    lastIntent: null,        // what JARVIS last detected
+    lastEntityName: null,    // extracted entity (project name, topic, etc.)
+    pendingConfirmation: null, // waiting for user to confirm an action
+    mood: 'neutral',         // user mood detection
+    conversationDepth: 0,    // how deep into a topic we are
   };
 
   function addToContext(role, text) {
@@ -33,6 +36,10 @@ const JarvisBrain = (function () {
   function getRecentContext() {
     return context.recentMessages.map(m => `${m.role}: ${m.text}`).join('\n');
   }
+
+  // ───────────────────────────────────────────────────
+  //  KEYWORD & PATTERN LIBRARIES
+  // ───────────────────────────────────────────────────
 
   const INTENT_SIGNALS = {
     create_project: {
@@ -155,39 +162,60 @@ const JarvisBrain = (function () {
     }
   };
 
+  // ───────────────────────────────────────────────────
+  //  ENTITY EXTRACTION
+  // ───────────────────────────────────────────────────
+
   function extractProjectName(text) {
+    // Try quoted names first
     const quoted = text.match(/["']([^"']+)["']/);
     if (quoted) return quoted[1];
+
+    // "called X" / "named X"
     const called = text.match(/\b(?:called|named|titled)\s+(.+?)(?:\.|,|$)/i);
     if (called) return called[1].trim();
+
+    // "project about X"
     const about = text.match(/\b(?:project|app|product|platform|venture|startup)\s+(?:about|for|on|around)\s+(.+?)(?:\.|,|!|\?|$)/i);
     if (about) return about[1].trim();
+
+    // "thinking about building X" / "planning to create X" etc.
     const thinkBuild = text.match(/\b(?:thinking|planning|considering)\s+(?:about|of)?\s*(?:building|creating|making|starting|launching|developing)\s+(?:a\s+|an\s+|the\s+)?(.+?)(?:\.|,|!|\?|$)/i);
     if (thinkBuild) {
       let name = thinkBuild[1].trim();
       name = name.replace(/\s+(?:project|thing|or\s+something|maybe|i\s+think|you\s+know)$/i, '').trim();
       if (name.length > 2 && name.length < 80) return name;
     }
+
+    // "build/create/start X" — grab the object
     const verb = text.match(/\b(?:build|create|start|launch|make|develop|building|creating|starting|launching|making|developing)\s+(?:a\s+|an\s+|the\s+)?(.+?)(?:\.|,|!|\?|$)/i);
     if (verb) {
       let name = verb[1].trim();
+      // Remove trailing filler
       name = name.replace(/\s+(?:project|thing|app|or\s+something|maybe|i\s+think|you\s+know)$/i, '').trim();
       if (name.length > 2 && name.length < 80) return name;
     }
+
+    // "I want/need to X a Y" pattern
     const wantTo = text.match(/\b(?:want|need|wanna|gotta)\s+(?:to\s+)?(?:build|create|start|make|develop|launch)\s+(?:a\s+|an\s+|the\s+)?(.+?)(?:\.|,|!|\?|$)/i);
     if (wantTo) {
       let name = wantTo[1].trim();
       name = name.replace(/\s+(?:project|thing|or\s+something|maybe)$/i, '').trim();
       if (name.length > 2 && name.length < 80) return name;
     }
+
+    // Last resort: grab the main subject after removing common words
     const cleaned = text
       .replace(/\b(i|we|you|me|my|our|the|a|an|this|that|it|was|is|are|be|to|of|and|or|but|in|on|at|for|with|about|so|just|really|think|want|need|should|could|would|let's|let|us|have|has|had|been|being|do|does|did|get|got|go|going|gonna|wanna|like|maybe|perhaps|actually|basically|probably|definitely|honestly|thinking|planning|considering|building|creating|starting|making|launching|developing|i've|i'm|ve|been)\b/gi, '')
-      .replace(/\s+/g, ' ').trim();
+      .replace(/\s+/g, ' ')
+      .trim();
     if (cleaned.length > 2 && cleaned.length < 60) return cleaned;
+
     return null;
   }
 
   function extractMemoryContent(text) {
+    // If the user says "remember that X" or "don't forget X"
     const patterns = [
       /\b(?:remember|note|save|store|keep|record|don'?t\s+forget)\s+(?:that\s+)?(.+)/i,
       /\b(?:make\s+(?:a\s+)?note|take\s+(?:a\s+)?note|jot\s+down)\s*(?::\s*|that\s+)?(.+)/i,
@@ -262,38 +290,87 @@ const JarvisBrain = (function () {
     return null;
   }
 
+  // ───────────────────────────────────────────────────
+  //  INTENT DETECTION — the core brain
+  // ───────────────────────────────────────────────────
+
   function detectIntent(text) {
     const lower = text.toLowerCase().trim();
     const scores = {};
+
     for (const [intent, signals] of Object.entries(INTENT_SIGNALS)) {
       scores[intent] = 0;
-      for (const pat of signals.strong) { if (pat.test(lower)) scores[intent] += 3; }
-      for (const pat of signals.weak) { if (pat.test(lower)) scores[intent] += 1; }
+      for (const pat of signals.strong) {
+        if (pat.test(lower)) scores[intent] += 3;
+      }
+      for (const pat of signals.weak) {
+        if (pat.test(lower)) scores[intent] += 1;
+      }
     }
-    if (context.lastIntent === 'create_project') { scores.create_task += 1; scores.save_memory += 0.5; }
-    if (context.pendingConfirmation) { scores.agreement += 1; scores.disagreement += 1; }
-    const ranked = Object.entries(scores).filter(([_, s]) => s > 0).sort((a, b) => b[1] - a[1]);
+
+    // Context boosting: if we were talking about projects, boost project-related intents
+    if (context.lastIntent === 'create_project') {
+      scores.create_task += 1;
+      scores.save_memory += 0.5;
+    }
+    if (context.pendingConfirmation) {
+      scores.agreement += 1;
+      scores.disagreement += 1;
+    }
+
+    // Sort by score
+    const ranked = Object.entries(scores)
+      .filter(([_, s]) => s > 0)
+      .sort((a, b) => b[1] - a[1]);
+
     if (ranked.length === 0) return { intent: 'casual_chat', confidence: 0.3, scores };
+
     const topIntent = ranked[0][0];
     const topScore = ranked[0][1];
     const confidence = Math.min(topScore / 6, 1.0);
+
     return { intent: topIntent, confidence, scores, ranked };
   }
+
+  // ───────────────────────────────────────────────────
+  //  RESPONSE GENERATION — intelligent, contextual
+  // ───────────────────────────────────────────────────
 
   function generateResponse(intent, text, actionResult, userName) {
     const name = userName || 'Sir';
     const openers = {
-      acknowledge: [`Understood, ${name}.`, `Of course, ${name}.`, `Right away, ${name}.`, `On it, ${name}.`, `Consider it done, ${name}.`, `Very well, ${name}.`, `Absolutely, ${name}.`],
-      thinking: [`Interesting thought, ${name}.`, `I see where you're going with this, ${name}.`, `That's a solid direction, ${name}.`, `Good thinking, ${name}.`],
-      casual: [`I appreciate you sharing that, ${name}.`, `That's an interesting perspective, ${name}.`, `I'm tracking with you, ${name}.`],
+      acknowledge: [
+        `Understood, ${name}.`,
+        `Of course, ${name}.`,
+        `Right away, ${name}.`,
+        `On it, ${name}.`,
+        `Consider it done, ${name}.`,
+        `Very well, ${name}.`,
+        `Absolutely, ${name}.`,
+      ],
+      thinking: [
+        `Interesting thought, ${name}.`,
+        `I see where you're going with this, ${name}.`,
+        `That's a solid direction, ${name}.`,
+        `Good thinking, ${name}.`,
+      ],
+      casual: [
+        `I appreciate you sharing that, ${name}.`,
+        `That's an interesting perspective, ${name}.`,
+        `I'm tracking with you, ${name}.`,
+      ],
     };
+
     const pick = arr => arr[Math.floor(Math.random() * arr.length)];
+
     switch (intent) {
       case 'create_project': {
         const projectName = actionResult?.name || extractProjectName(text) || 'your new initiative';
         return `${pick(openers.acknowledge)} I've initialized project "${projectName}" and it's now tracked in the operational matrix. All resources allocated. Would you like to add some initial tasks to it, or shall I set up a research brief first?`;
       }
-      case 'save_memory': return `${pick(openers.acknowledge)} I've indexed that into the memory banks for future reference. It's searchable and permanently stored. Is there anything else worth noting while we're on this topic?`;
+      case 'save_memory': {
+        return `${pick(openers.acknowledge)} I've indexed that into the memory banks for future reference. It's searchable and permanently stored. Is there anything else worth noting while we're on this topic?`;
+      }
       case 'research': {
         const topic = actionResult?.topic || extractResearchTopic(text) || 'that topic';
         return `${pick(openers.acknowledge)} I've logged a research entry on "${topic}" in the knowledge matrix. I should note, ${name}, the more details you feed me about what specifically you want to understand, the more useful the analysis becomes. What angle interests you most?`;
@@ -308,7 +385,10 @@ const JarvisBrain = (function () {
       }
       case 'navigate': {
         const target = extractNavigationTarget(text);
-        const viewNames = { dashboard: 'command center', chat: 'conversation interface', projects: 'project matrix', operations: 'operations panel', research: 'research center', memory: 'memory banks', settings: 'configuration panel' };
+        const viewNames = {
+          dashboard: 'command center', chat: 'conversation interface', projects: 'project matrix',
+          operations: 'operations panel', research: 'research center', memory: 'memory banks', settings: 'configuration panel'
+        };
         return `${pick(openers.acknowledge)} Navigating to the ${viewNames[target] || target}. Let me know what you need, ${name}.`;
       }
       case 'greeting': {
@@ -322,50 +402,99 @@ const JarvisBrain = (function () {
         ];
         return pick(greetings);
       }
-      case 'status_check': return `All primary systems nominal, ${name}. Arc reactor operating at peak efficiency. We currently have ${actionResult?.projects || 0} active projects, ${actionResult?.memories || 0} indexed memories, and ${actionResult?.operations || 0} operations in the pipeline. AI core is processing at optimal capacity. No anomalies detected. Anything specific you'd like me to drill into?`;
+      case 'status_check': {
+        return `All primary systems nominal, ${name}. Arc reactor operating at peak efficiency. We currently have ${actionResult?.projects || 0} active projects, ${actionResult?.memories || 0} indexed memories, and ${actionResult?.operations || 0} operations in the pipeline. AI core is processing at optimal capacity. No anomalies detected. Anything specific you'd like me to drill into?`;
+      }
       case 'gratitude': {
-        const responses = [`Always at your service, ${name}. That's what I'm here for.`, `My pleasure, ${name}. Is there anything else I can assist with?`, `Happy to help, ${name}. Shall we continue?`, `Glad that was useful, ${name}. What's next on the agenda?`];
+        const responses = [
+          `Always at your service, ${name}. That's what I'm here for.`,
+          `My pleasure, ${name}. Is there anything else I can assist with?`,
+          `Happy to help, ${name}. Shall we continue?`,
+          `Glad that was useful, ${name}. What's next on the agenda?`,
+        ];
         return pick(responses);
       }
-      case 'agreement': { if (context.pendingConfirmation) return null; return `Confirmed, ${name}. Proceeding accordingly.`; }
-      case 'disagreement': { if (context.pendingConfirmation) return `Understood, ${name}. Standing down on that. What would you prefer instead?`; return `Noted, ${name}. I'll adjust course. What direction would you like to take?`; }
+      case 'agreement': {
+        if (context.pendingConfirmation) {
+          return null; // Handled by confirmation logic
+        }
+        return `Confirmed, ${name}. Proceeding accordingly.`;
+      }
+      case 'disagreement': {
+        if (context.pendingConfirmation) {
+          return `Understood, ${name}. Standing down on that. What would you prefer instead?`;
+        }
+        return `Noted, ${name}. I'll adjust course. What direction would you like to take?`;
+      }
       case 'time_query': {
         const now = new Date();
         const time = now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
         const date = now.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
         return `It's currently ${time} on ${date}, ${name}.`;
       }
-      case 'help': return `I'm your personal AI interface, ${name}. You don't need specific commands — just talk to me naturally. Tell me about a project you want to start, something you want to remember, a topic you're curious about, or an operation you need to launch. I'll figure out what to do. I can also navigate the interface, check system status, and maintain our conversation history. Just speak your mind.`;
+      case 'help': {
+        return `I'm your personal AI interface, ${name}. You don't need specific commands — just talk to me naturally. Tell me about a project you want to start, something you want to remember, a topic you're curious about, or an operation you need to launch. I'll figure out what to do. I can also navigate the interface, check system status, and maintain our conversation history. Just speak your mind.`;
+      }
       case 'casual_chat':
-      default: return generateCasualResponse(text, name);
+      default: {
+        return generateCasualResponse(text, name);
+      }
     }
   }
 
   function generateCasualResponse(text, name) {
     const lower = text.toLowerCase();
     const length = text.split(/\s+/).length;
+
+    // Very short inputs — could be continuation
     if (length <= 3) {
-      if (context.lastIntent && context.lastEntityName) return `Are you referring to "${context.lastEntityName}", ${name}? Could you elaborate so I can assist more effectively?`;
-      const shorts = [`I'm listening, ${name}. Tell me more about what you have in mind.`, `Go on, ${name}. I'm processing.`, `I'm with you, ${name}. What specifically would you like me to do with that?`];
+      if (context.lastIntent && context.lastEntityName) {
+        return `Are you referring to "${context.lastEntityName}", ${name}? Could you elaborate so I can assist more effectively?`;
+      }
+      const shorts = [
+        `I'm listening, ${name}. Tell me more about what you have in mind.`,
+        `Go on, ${name}. I'm processing.`,
+        `I'm with you, ${name}. What specifically would you like me to do with that?`,
+      ];
       return shorts[Math.floor(Math.random() * shorts.length)];
     }
+
+    // Detect if this sounds like something worth saving
     const informational = /\b(the\s+(?:key|main|important)\s+thing|basically|essentially|in\s+summary|the\s+point\s+is|conclusion|takeaway|lesson|insight)\b/i.test(lower);
     if (informational) {
-      context.pendingConfirmation = { action: 'save_memory', data: text, question: `That sounds like valuable information, ${name}. Shall I index that into the memory banks for future reference?` };
+      context.pendingConfirmation = {
+        action: 'save_memory',
+        data: text,
+        question: `That sounds like valuable information, ${name}. Shall I index that into the memory banks for future reference?`
+      };
       return context.pendingConfirmation.question;
     }
+
+    // Detect if this sounds like a project idea
     const ideational = /\b(idea|concept|vision|plan|strategy|approach|thinking\s+about|what\s+if|imagine|picture\s+this)\b/i.test(lower);
     if (ideational && length > 8) {
       const topic = extractProjectName(text);
-      context.pendingConfirmation = { action: 'create_project', data: topic || text.slice(0, 60), question: `That sounds like it could be a project worth tracking, ${name}. Shall I initialize "${topic || 'this concept'}" in the project matrix so we can develop it properly?` };
+      context.pendingConfirmation = {
+        action: 'create_project',
+        data: topic || text.slice(0, 60),
+        question: `That sounds like it could be a project worth tracking, ${name}. Shall I initialize "${topic || 'this concept'}" in the project matrix so we can develop it properly?`
+      };
       return context.pendingConfirmation.question;
     }
+
+    // Detect opinion or discussion about a topic — offer research
     const curiosity = /\b(wonder|curious|interesting|fascinating|weird|strange|surprising|confused|don'?t\s+understand|how\s+come|why\s+(?:does|is|are|do))\b/i.test(lower);
     if (curiosity && length > 6) {
       const topic = extractResearchTopic(text) || text.replace(/^(?:i\s+)?(?:wonder|am\s+curious)\s*/i, '').slice(0, 60);
-      context.pendingConfirmation = { action: 'research', data: topic, question: `Sounds like a topic worth investigating, ${name}. Want me to open a research file on "${topic}" so we can dig deeper?` };
+      context.pendingConfirmation = {
+        action: 'research',
+        data: topic,
+        question: `Sounds like a topic worth investigating, ${name}. Want me to open a research file on "${topic}" so we can dig deeper?`
+      };
       return context.pendingConfirmation.question;
     }
+
+    // Generic conversational responses that feel intelligent
     const responses = [
       `I hear you, ${name}. Based on what you're telling me, I'm thinking there might be an action we should take. Would you like to turn this into a project, save it as a note, or explore it further through research?`,
       `That's an interesting direction, ${name}. I'm tracking the conversation and I'll remember this context. If you want me to take any specific action — create a project, log a memory, or launch an operation — just let me know naturally. I'll pick up on it.`,
@@ -376,22 +505,41 @@ const JarvisBrain = (function () {
     return responses[Math.floor(Math.random() * responses.length)];
   }
 
+  // ───────────────────────────────────────────────────
+  //  AUTONOMOUS ACTION EXECUTION
+  // ───────────────────────────────────────────────────
+
   async function executeAction(intent, text, api, helpers) {
-    const { navigate, loadProjects, loadDashboard, loadOperations, loadResearch, loadMemory, renderKanban, playSuccessSound, showToast, openModal, State, CinematicVFX } = helpers;
+    const { navigate, loadProjects, loadDashboard, loadOperations, loadResearch,
+            loadMemory, renderKanban, playSuccessSound, showToast, openModal,
+            State, CinematicVFX } = helpers;
+
     let actionResult = null;
+
     switch (intent) {
       case 'create_project': {
         const name = extractProjectName(text);
         if (!name) return null;
         if (CinematicVFX) CinematicVFX.projectInit(name);
         const p = await api('projects', 'POST', { name, status: 'Active' });
-        if (p) { playSuccessSound(); loadProjects(); loadDashboard(); actionResult = { name: p.name, id: p.id }; context.lastEntityName = p.name; }
+        if (p) {
+          playSuccessSound();
+          loadProjects();
+          loadDashboard();
+          actionResult = { name: p.name, id: p.id };
+          context.lastEntityName = p.name;
+        }
         break;
       }
       case 'save_memory': {
         const content = extractMemoryContent(text);
         if (CinematicVFX) CinematicVFX.memoryIndex();
-        await api('memories', 'POST', { title: content.slice(0, 60), content: content, tags: [context.currentTopic || 'conversation'].filter(Boolean), source: 'conversation' });
+        await api('memories', 'POST', {
+          title: content.slice(0, 60),
+          content: content,
+          tags: [context.currentTopic || 'conversation'].filter(Boolean),
+          source: 'conversation'
+        });
         playSuccessSound();
         if (State.currentView === 'memory') loadMemory();
         loadDashboard();
@@ -402,7 +550,12 @@ const JarvisBrain = (function () {
         const topic = extractResearchTopic(text);
         if (!topic) return null;
         if (CinematicVFX) CinematicVFX.researchAnalysis(topic);
-        const r = await api('research', 'POST', { topic, summary: `Research initiated from conversation: "${text.slice(0, 120)}"`, findings: [], status: 'active' });
+        const r = await api('research', 'POST', {
+          topic,
+          summary: `Research initiated from conversation: "${text.slice(0, 120)}"`,
+          findings: [],
+          status: 'active'
+        });
         playSuccessSound();
         if (State.currentView === 'research') loadResearch();
         loadDashboard();
@@ -415,8 +568,13 @@ const JarvisBrain = (function () {
         if (!title) return null;
         if (State.currentProjectId) {
           const t = await api('tasks', 'POST', { title, project_id: State.currentProjectId, status: 'todo', priority: 'medium' });
-          if (t) { playSuccessSound(); renderKanban(State.currentProjectId); actionResult = { title: t.title }; }
+          if (t) {
+            playSuccessSound();
+            renderKanban(State.currentProjectId);
+            actionResult = { title: t.title };
+          }
         } else {
+          // No project open — save as memory instead
           await api('memories', 'POST', { title: title.slice(0, 60), content: `Task: ${title}`, tags: ['task'], source: 'conversation' });
           playSuccessSound();
           actionResult = { title, savedAsMemory: true };
@@ -427,32 +585,62 @@ const JarvisBrain = (function () {
         const opName = extractOperationName(text) || context.lastEntityName || 'Autonomous Operation';
         if (CinematicVFX) CinematicVFX.operationLaunch(opName);
         const op = await api('operations', 'POST', { name: opName, status: 'queued', progress: 0 });
-        if (op) { playSuccessSound(); showToast(`Operation "${op.name}" queued.`); loadOperations(); loadDashboard(); actionResult = { name: op.name }; }
+        if (op) {
+          playSuccessSound();
+          showToast(`Operation "${op.name}" queued.`);
+          loadOperations();
+          loadDashboard();
+          actionResult = { name: op.name };
+        }
         break;
       }
-      case 'navigate': { const target = extractNavigationTarget(text); if (target) { navigate(target); actionResult = { view: target }; } break; }
+      case 'navigate': {
+        const target = extractNavigationTarget(text);
+        if (target) {
+          navigate(target);
+          actionResult = { view: target };
+        }
+        break;
+      }
       case 'status_check': {
-        const [projects, memories, operations] = await Promise.all([api('projects'), api('memories'), api('operations')]);
-        actionResult = { projects: (projects || []).filter(p => p.status === 'Active').length, memories: (memories || []).length, operations: (operations || []).length };
+        const [projects, memories, operations] = await Promise.all([
+          api('projects'), api('memories'), api('operations')
+        ]);
+        actionResult = {
+          projects: (projects || []).filter(p => p.status === 'Active').length,
+          memories: (memories || []).length,
+          operations: (operations || []).length
+        };
         break;
       }
     }
+
     return actionResult;
   }
+
+  // ───────────────────────────────────────────────────
+  //  MAIN PROCESSOR — the public brain function
+  // ───────────────────────────────────────────────────
 
   async function process(userText, api, helpers) {
     const { State } = helpers;
     const userName = State?.userName || 'Sir';
+
+    // Add to conversation context
     addToContext('user', userText);
+
+    // Check for pending confirmation first
     if (context.pendingConfirmation) {
       const detection = detectIntent(userText);
       if (detection.intent === 'agreement') {
         const pending = context.pendingConfirmation;
         context.pendingConfirmation = null;
+        // Execute the pending action
         const actionResult = await executeAction(pending.action,
           pending.action === 'save_memory' ? `remember ${pending.data}` :
           pending.action === 'create_project' ? `create project ${pending.data}` :
-          pending.action === 'research' ? `research ${pending.data}` : pending.data,
+          pending.action === 'research' ? `research ${pending.data}` :
+          pending.data,
           api, helpers
         );
         const response = generateResponse(pending.action, pending.data, actionResult, userName);
@@ -465,32 +653,62 @@ const JarvisBrain = (function () {
         addToContext('jarvis', response);
         return { response, intent: 'disagreement', actionTaken: false };
       }
+      // If neither agreement nor disagreement, clear pending and process normally
       context.pendingConfirmation = null;
     }
+
+    // Detect intent from natural language
     const detection = detectIntent(userText);
     let { intent, confidence } = detection;
-    if (confidence < 0.4 && intent !== 'greeting' && intent !== 'gratitude' && intent !== 'agreement' && intent !== 'disagreement' && intent !== 'time_query' && intent !== 'help' && intent !== 'status_check') {
-      intent = 'casual_chat';
-    }
-    context.lastIntent = intent;
-    context.conversationDepth++;
+
+    // Decide whether to take autonomous action
+    const shouldAct = confidence >= 0.4 && [
+      'create_project', 'save_memory', 'research', 'create_task',
+      'launch_operation', 'navigate', 'status_check'
+    ].includes(intent);
+
     let actionResult = null;
-    const actionIntents = ['create_project', 'save_memory', 'research', 'create_task', 'launch_operation', 'navigate', 'status_check'];
-    if (actionIntents.includes(intent)) {
+    let actionTaken = false;
+
+    if (shouldAct) {
+      // High confidence — take action autonomously
       actionResult = await executeAction(intent, userText, api, helpers);
-      if (actionResult === null && ['create_project', 'research', 'create_task'].includes(intent)) intent = 'casual_chat';
+      actionTaken = actionResult !== null;
+      if (!actionTaken) {
+        // Action failed (couldn't extract entity) — fall back to conversation
+        intent = 'casual_chat';
+      }
     }
+
+    // Generate response
     const response = generateResponse(intent, userText, actionResult, userName);
-    if (response) addToContext('jarvis', response);
-    return { response: response || `Processing complete, ${userName}.`, intent, confidence, actionTaken: actionResult !== null, actionResult };
+
+    // Update context
+    addToContext('jarvis', response);
+    context.lastIntent = intent;
+    if (actionResult) {
+      context.currentTopic = intent;
+      context.conversationDepth++;
+    }
+
+    return { response, intent, confidence, actionTaken, actionResult };
   }
 
+  // ───────────────────────────────────────────────────
+  //  PUBLIC API
+  // ───────────────────────────────────────────────────
   return {
     process,
+    detectIntent,
     getContext: () => ({ ...context }),
-    clearContext: () => { context.recentMessages = []; context.currentTopic = null; context.lastIntent = null; context.lastEntityName = null; context.pendingConfirmation = null; }
+    clearContext: () => {
+      context.recentMessages = [];
+      context.currentTopic = null;
+      context.lastIntent = null;
+      context.lastEntityName = null;
+      context.pendingConfirmation = null;
+      context.conversationDepth = 0;
+    }
   };
 
 })();
-
-window.JarvisBrain = JarvisBrain;
