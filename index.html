@@ -20,6 +20,47 @@
 </head>
 <body>
 
+<!-- PIN Lock Screen -->
+<div id="pin-overlay" class="pin-overlay">
+  <div class="pin-container">
+    <div class="pin-arc">
+      <svg viewBox="0 0 120 120" width="80" height="80">
+        <circle cx="60" cy="60" r="54" fill="none" stroke="#00d4ff" stroke-width="1.5" stroke-opacity="0.3"/>
+        <circle cx="60" cy="60" r="45" fill="none" stroke="#00d4ff" stroke-width="1" stroke-opacity="0.2" stroke-dasharray="4 6"/>
+        <circle cx="60" cy="60" r="12" fill="#00d4ff" fill-opacity="0.8"/>
+        <circle cx="60" cy="60" r="18" fill="none" stroke="#00d4ff" stroke-width="0.75" stroke-opacity="0.5"/>
+      </svg>
+    </div>
+    <div class="pin-title" id="pin-title">ENTER ACCESS CODE</div>
+    <div class="pin-subtitle" id="pin-subtitle">Identity verification required</div>
+    <div class="pin-dots" id="pin-dots">
+      <span class="pin-dot"></span>
+      <span class="pin-dot"></span>
+      <span class="pin-dot"></span>
+      <span class="pin-dot"></span>
+      <span class="pin-dot"></span>
+      <span class="pin-dot"></span>
+    </div>
+    <input type="password" id="pin-input" class="pin-input" maxlength="6" inputmode="numeric" pattern="[0-9]*" autocomplete="off" autofocus>
+    <div class="pin-keypad" id="pin-keypad">
+      <button class="pin-key" data-key="1">1</button>
+      <button class="pin-key" data-key="2">2</button>
+      <button class="pin-key" data-key="3">3</button>
+      <button class="pin-key" data-key="4">4</button>
+      <button class="pin-key" data-key="5">5</button>
+      <button class="pin-key" data-key="6">6</button>
+      <button class="pin-key" data-key="7">7</button>
+      <button class="pin-key" data-key="8">8</button>
+      <button class="pin-key" data-key="9">9</button>
+      <button class="pin-key pin-key-clear" data-key="clear">C</button>
+      <button class="pin-key" data-key="0">0</button>
+      <button class="pin-key pin-key-enter" data-key="enter">&#10003;</button>
+    </div>
+    <div class="pin-error" id="pin-error"></div>
+    <div class="pin-footer" id="pin-footer"></div>
+  </div>
+</div>
+
 <!-- ═══════════════════════════════════════════════════ -->
 <!--  BOOT SEQUENCE OVERLAY                              -->
 <!-- ═══════════════════════════════════════════════════ -->
