@@ -1,6 +1,94 @@
 /* JARVIS AI Assistant — HUD Theme & Component Styles */
 @import url('https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;500;600;700&family=Inter:wght@300;400;500;600&family=Share+Tech+Mono&display=swap');
 
+/* ─── PIN Lock Screen ─── */
+.pin-overlay {
+  position: fixed; inset: 0; z-index: 10000;
+  background: #0a0e17;
+  display: flex; align-items: center; justify-content: center;
+  font-family: var(--font-mono, 'Share Tech Mono', monospace);
+  transition: opacity 0.5s ease, visibility 0.5s ease;
+}
+.pin-overlay.hidden { opacity: 0; visibility: hidden; pointer-events: none; }
+.pin-container {
+  display: flex; flex-direction: column; align-items: center;
+  gap: 20px; padding: 40px; max-width: 340px; width: 100%;
+}
+.pin-arc { animation: pinPulse 2s ease-in-out infinite; }
+@keyframes pinPulse {
+  0%, 100% { filter: drop-shadow(0 0 8px rgba(0,212,255,0.4)); }
+  50% { filter: drop-shadow(0 0 20px rgba(0,212,255,0.8)); }
+}
+.pin-title {
+  font-family: var(--font-display, 'Rajdhani', sans-serif);
+  font-size: 16px; font-weight: 700; color: #00d4ff;
+  letter-spacing: 0.2em; text-transform: uppercase; text-align: center;
+}
+.pin-subtitle {
+  font-size: 11px; color: rgba(255,255,255,0.4);
+  letter-spacing: 0.15em; text-transform: uppercase; text-align: center;
+}
+.pin-dots {
+  display: flex; gap: 12px; padding: 8px 0;
+}
+.pin-dot {
+  width: 14px; height: 14px; border-radius: 50%;
+  border: 1.5px solid rgba(0,212,255,0.4);
+  background: transparent;
+  transition: all 0.2s ease;
+}
+.pin-dot.filled {
+  background: #00d4ff;
+  border-color: #00d4ff;
+  box-shadow: 0 0 8px rgba(0,212,255,0.6);
+}
+.pin-dot.error {
+  border-color: #ff4444;
+  background: #ff4444;
+  box-shadow: 0 0 8px rgba(255,68,68,0.6);
+}
+.pin-input {
+  position: absolute; opacity: 0; pointer-events: none;
+}
+.pin-keypad {
+  display: grid; grid-template-columns: repeat(3, 1fr);
+  gap: 12px; width: 100%; max-width: 260px;
+}
+.pin-key {
+  width: 72px; height: 72px; margin: 0 auto;
+  border-radius: 50%; border: 1px solid rgba(0,212,255,0.3);
+  background: rgba(0,212,255,0.05);
+  color: #00d4ff; font-family: inherit;
+  font-size: 22px; font-weight: 600;
+  cursor: pointer; transition: all 0.15s ease;
+  display: flex; align-items: center; justify-content: center;
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+}
+.pin-key:active, .pin-key:hover {
+  background: rgba(0,212,255,0.15);
+  border-color: #00d4ff;
+  box-shadow: 0 0 12px rgba(0,212,255,0.3);
+  transform: scale(0.95);
+}
+.pin-key-clear { color: rgba(255,255,255,0.5); border-color: rgba(255,255,255,0.15); background: rgba(255,255,255,0.03); }
+.pin-key-clear:active { background: rgba(255,68,68,0.15); border-color: #ff4444; color: #ff4444; }
+.pin-key-enter { color: #00ff88; border-color: rgba(0,255,136,0.3); background: rgba(0,255,136,0.05); }
+.pin-key-enter:active { background: rgba(0,255,136,0.15); border-color: #00ff88; box-shadow: 0 0 12px rgba(0,255,136,0.3); }
+.pin-error {
+  font-size: 11px; color: #ff4444; letter-spacing: 0.1em;
+  text-transform: uppercase; min-height: 18px; text-align: center;
+}
+.pin-footer {
+  font-size: 10px; color: rgba(255,255,255,0.25);
+  letter-spacing: 0.1em; text-align: center;
+}
+@media (max-width: 600px) {
+  .pin-container { padding: 24px 16px; }
+  .pin-key { width: 64px; height: 64px; font-size: 20px; }
+  .pin-keypad { gap: 10px; max-width: 230px; }
+}
+
 /* ─── Design Tokens ─── */
 :root {
   /* Core background layers */
