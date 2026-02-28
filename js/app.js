@@ -157,6 +157,10 @@ const DEFAULT_SETTINGS = {
   theme: 'dark',
   continuous_mode: 'true',
   wake_word: 'true',
+  el_enabled: 'true',
+  el_apikey: 'ae057a5a1eac4465a8d4ad630bda48d0a6aad444db35a024543ef51748464e43',
+  el_voiceid: 'P3TTlDkzxma0sdCGP8YZ',
+  el_model: 'eleven_multilingual_v2',
 };
 
 function api(action, method = 'GET', body = null, params = '') {
@@ -1003,7 +1007,9 @@ function _processSpeechQueue() {
   const clean = text.replace(/[•▸\*\_`]/g, '').replace(/\n/g, '. ');
 
   // Route to ElevenLabs if enabled and configured
-  if (State.elevenLabs.enabled && State.elevenLabs.apiKey && State.elevenLabs.voiceId) {
+  const elEnabled = State.elevenLabs.enabled && State.elevenLabs.apiKey && State.elevenLabs.voiceId;
+  console.log('[JARVIS TTS] enabled:', State.elevenLabs.enabled, 'apiKey:', !!State.elevenLabs.apiKey, 'voiceId:', !!State.elevenLabs.voiceId, '→ route:', elEnabled ? 'ElevenLabs' : 'BrowserTTS');
+  if (elEnabled) {
     _speakElevenLabs(clean);
     return;
   }
@@ -1049,9 +1055,9 @@ async function _speakElevenLabs(text) {
     const audioBlob = await response.blob();
     const audioUrl = URL.createObjectURL(audioBlob);
 
-    // Use the pre-unlocked audio element (or create new if not primed)
-    const audio = _elAudio || new Audio();
-    audio.src = audioUrl;
+    // Always create a fresh audio element for each TTS response
+    // (Reusing a primed element fails on mobile Safari after first use)
+    const audio = new Audio(audioUrl);
     audio.volume = State.voiceSettings.volume;
     State.elevenLabsAudio = audio;
 
@@ -1095,15 +1101,20 @@ async function _speakElevenLabs(text) {
     try {
       await audio.play();
     } catch (playErr) {
-      console.warn('Audio play blocked, retrying with user gesture workaround:', playErr);
-      // Last resort: create fresh audio element
-      const fallbackAudio = new Audio(audioUrl);
-      fallbackAudio.volume = State.voiceSettings.volume;
-      State.elevenLabsAudio = fallbackAudio;
-      fallbackAudio.onended = audio.onended;
-      fallbackAudio.onerror = audio.onerror;
-      try { await fallbackAudio.play(); } catch(e2) {
-        console.warn('All audio play attempts failed, falling back to browser TTS');
+      console.warn('Audio play blocked:', playErr);
+      // On mobile, autoplay may be blocked — try via the primed element
+      if (_elAudio) {
+        _elAudio.src = audioUrl;
+        _elAudio.volume = State.voiceSettings.volume;
+        State.elevenLabsAudio = _elAudio;
+        _elAudio.onended = audio.onended;
+        _elAudio.onerror = audio.onerror;
+        try { await _elAudio.play(); } catch(e2) {
+          console.warn('All audio play attempts failed, falling back to browser TTS');
+          _speakBrowserTTS(text);
+        }
+      } else {
+        console.warn('No primed audio element, falling back to browser TTS');
         _speakBrowserTTS(text);
       }
     }
