@@ -155,6 +155,8 @@ const DEFAULT_SETTINGS = {
   glow_intensity: 1.0,
   animation_speed: 1.0,
   theme: 'dark',
+  continuous_mode: 'true',
+  wake_word: 'true',
 };
 
 function api(action, method = 'GET', body = null, params = '') {
@@ -765,13 +767,20 @@ function initVoice() {
       stopAudioVisualization();
       if (!State.isSpeaking) {
         setArcState('idle');
-        // Continuous mode: restart after end (only if not speaking — speakText.onend handles that case)
+        // Continuous mode: restart listening immediately
         if (State.continuousMode && !State.isSpeaking) {
           setTimeout(() => {
             if (!State.isListening && !State.isSpeaking) {
               try { State.recognition.start(); } catch(e) {}
             }
-          }, 1200);
+          }, 800);
+        }
+        // Wake word mode: go back to listening for "Hey JARVIS"
+        else if (!State.continuousMode && !State.wakeWordActive) {
+          const wwToggle = $('setting-wakeword');
+          if (wwToggle && wwToggle.checked) {
+            setTimeout(() => startWakeWordDetection(), 500);
+          }
         }
       }
     };
@@ -1055,12 +1064,20 @@ async function _speakElevenLabs(text) {
       } else {
         if (!State.isListening) {
           setArcState('idle');
+          // Continuous mode: auto-restart listening after JARVIS finishes speaking
           if (State.continuousMode && State.recognition) {
             setTimeout(() => {
               if (!State.isListening && !State.isSpeaking) {
                 try { State.recognition.start(); } catch(e) {}
               }
-            }, 1000);
+            }, 800);
+          }
+          // Wake word: restart detection so user can say "Hey JARVIS" again
+          else if (!State.continuousMode && !State.wakeWordActive) {
+            const wwToggle = document.getElementById('setting-wakeword');
+            if (wwToggle && wwToggle.checked) {
+              setTimeout(() => startWakeWordDetection(), 500);
+            }
           }
         }
       }
@@ -1127,7 +1144,13 @@ function _speakBrowserTTS(text) {
             if (!State.isListening && !State.isSpeaking) {
               try { State.recognition.start(); } catch(e) {}
             }
-          }, 1000);
+          }, 800);
+        }
+        else if (!State.continuousMode && !State.wakeWordActive) {
+          const wwToggle = document.getElementById('setting-wakeword');
+          if (wwToggle && wwToggle.checked) {
+            setTimeout(() => startWakeWordDetection(), 500);
+          }
         }
       }
     }
@@ -1615,6 +1638,20 @@ async function loadSettings() {
   _updateElStatusDot();
   populateVoiceSelector();
   updateGreeting();
+
+  // Continuous mode & wake word — load from settings and auto-enable
+  const cmEnabled = settings.continuous_mode === 'true' || settings.continuous_mode === true;
+  State.continuousMode = cmEnabled;
+  const cmToggle = $('setting-continuous');
+  if (cmToggle) cmToggle.checked = cmEnabled;
+
+  const wwEnabled = settings.wake_word === 'true' || settings.wake_word === true;
+  const wwToggle = $('setting-wakeword');
+  if (wwToggle) wwToggle.checked = wwEnabled;
+  // Auto-start wake word after boot if enabled
+  if (wwEnabled) {
+    setTimeout(() => startWakeWordDetection(), 1500);
+  }
 }
 
 async function saveSettings() {
@@ -1631,6 +1668,9 @@ async function saveSettings() {
     el_stability: parseFloat($('setting-el-stability')?.value || '0.5'),
     el_similarity: parseFloat($('setting-el-similarity')?.value || '0.75'),
     el_style: parseFloat($('setting-el-style')?.value || '0.4'),
+    // Voice modes
+    continuous_mode: $('setting-continuous')?.checked ? 'true' : 'false',
+    wake_word: $('setting-wakeword')?.checked ? 'true' : 'false',
   };
 
   State.userName = settings.user_name;
