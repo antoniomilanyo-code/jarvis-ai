@@ -110,7 +110,7 @@ const State = {
 const $ = id => document.getElementById(id);
 const $$ = sel => document.querySelectorAll(sel);
 
-// ── localStorage helpers ────────────────────
+// ── localStorage helpers ──────────────────────────────
 const LS_PREFIX = 'jarvis_';
 function lsGet(table) {
   try { return JSON.parse(localStorage.getItem(LS_PREFIX + table) || 'null'); } catch { return null; }
@@ -144,7 +144,7 @@ function api(action, method = 'GET', body = null, params = '') {
     const p = parseParams(params);
     const now = new Date().toISOString();
 
-    // ── SETTINGS ────────────────────────────────────
+    // ── SETTINGS ────────────────────────────────────────
     if (action === 'settings') {
       if (method === 'GET') {
         const stored = lsGet('settings');
@@ -158,7 +158,7 @@ function api(action, method = 'GET', body = null, params = '') {
       }
     }
 
-    // ── GENERIC TABLE ACTIONS ────────────────────
+    // ── GENERIC TABLE ACTIONS ────────────────────────────
     // Tables stored as arrays: conversations, projects, tasks, memories, research, operations
     let rows = lsGet(action);
     if (!Array.isArray(rows)) rows = [];
@@ -240,7 +240,7 @@ function pickRandom(arr) {
 }
 
 function fillTemplate(str, vars = {}) {
-  return str.replace(/\{(\w+)\}/g, (_, k) => vars[k] || State.userName || 'Sir');
+  return str.replace(/{(\w+)}/g, (_, k) => vars[k] || State.userName || 'Sir');
 }
 
 function timeOfDay() {
@@ -1998,77 +1998,106 @@ function bindEvents() {
     let debounce;
     memSearch.addEventListener('input', () => {
       clearTimeout(debounce);
-      debounce = setTimeout(() => loadMemory(memSearch.value.trim()), 300);
+      debounce = setTimeout(() => loadMemory(memSearch.value), 300);
     });
   }
 
-  // Hash-based routing on load
-  const hash = window.location.hash.slice(1);
-  const validViews = ['dashboard', 'chat', 'projects', 'operations', 'research', 'memory', 'settings'];
-  if (validViews.includes(hash)) {
-    navigate(hash);
+  // Mobile nav bottom bar
+  const isMobile = () => window.innerWidth <= 600;
+  function updateBottomBar() {
+    $$('.mobile-nav-btn').forEach(b => b.style.display = isMobile() ? 'flex' : 'none');
+    $$('.mobile-nav-btn').forEach(b => { if (!isMobile()) b.style.display = 'none'; });
+    const qp = $('quick-project-btn');
+    const qr = $('quick-research-btn');
+    const qm = $('quick-memory-btn');
+    if (!isMobile()) {
+      [qp, qr, qm].forEach(el => { if (el) el.style.display = 'inline-flex'; });
+    } else {
+      [qp, qr, qm].forEach(el => { if (el) el.style.display = 'none'; });
+    }
   }
+  updateBottomBar();
+  window.addEventListener('resize', updateBottomBar);
+
+  // Handle hash routing
+  window.addEventListener('hashchange', () => {
+    const hash = window.location.hash.replace('#', '');
+    if (hash) navigate(hash);
+  });
 }
 
 // ═══════════════════════════════════════════════════════
 //  BOOT SEQUENCE
 // ═══════════════════════════════════════════════════════
-const BOOT_STEPS = [
-  { text: 'Initializing core systems...', pct: 10 },
-  { text: 'Loading neural pathways...', pct: 22 },
-  { text: 'Calibrating voice synthesis...', pct: 38 },
-  { text: 'Connecting to knowledge matrix...', pct: 52 },
-  { text: 'Synchronizing operational data...', pct: 67 },
-  { text: 'Activating HUD interface...', pct: 80 },
-  { text: 'Running final diagnostics...', pct: 92 },
-  { text: 'JARVIS online. Ready.', pct: 100 },
-];
+function runBootSequence() {
+  return new Promise(resolve => {
+    const bar = $('boot-bar');
+    const statusText = $('boot-status-text');
+    const steps = [
+      [10, 'Loading JARVIS core systems...'],
+      [25, 'Initializing arc reactor interface...'],
+      [40, 'Connecting to Stark database...'],
+      [55, 'Loading voice recognition module...'],
+      [70, 'Synchronizing memory banks...'],
+      [85, 'Running system diagnostics...'],
+      [95, 'Finalizing interface protocols...'],
+      [100, 'All systems operational.'],
+    ];
 
-async function runBootSequence() {
-  const overlay = $('boot-overlay');
-  const statusText = $('boot-status-text');
-  const bar = $('boot-bar');
-
-  for (const step of BOOT_STEPS) {
-    if (statusText) statusText.textContent = step.text;
-    if (bar) bar.style.width = step.pct + '%';
-    await new Promise(r => setTimeout(r, 280 + Math.random() * 150));
-  }
-
-  // Fade out boot overlay
-  if (overlay) overlay.classList.add('hidden');
-
-  // Show app shell
-  const shell = $('app-shell');
-  if (shell) {
-    setTimeout(() => { shell.style.opacity = '1'; }, 100);
-  }
-
-  // Load initial settings + data
-  const settings = await loadSettings();
-  loadDashboard();
-  startClock();
-  updateGreeting();
-  animateDiagnostics();
-  bindEvents();
-  initVoice();
-  initAudio();
-
-  // Greet the user
-  setTimeout(() => {
-    const tod = timeOfDay();
-    speakText(fillTemplate(pickRandom(JARVIS_RESPONSES.greetings), { time: tod }));
-  }, 800);
-}
-
-// Register Service Worker
-if ('serviceWorker' in navigator) {
-  window.addEventListener('load', () => {
-    navigator.serviceWorker.register('./sw.js').catch(err => {
-      console.log('Service Worker registration failed:', err);
-    });
+    let i = 0;
+    const next = () => {
+      if (i >= steps.length) {
+        setTimeout(resolve, 400);
+        return;
+      }
+      const [pct, msg] = steps[i++];
+      if (bar) bar.style.width = pct + '%';
+      if (statusText) statusText.textContent = msg;
+      setTimeout(next, 280 + Math.random() * 120);
+    };
+    next();
   });
 }
 
-// Start
-document.addEventListener('DOMContentLoaded', runBootSequence);
+// ═══════════════════════════════════════════════════════
+//  INIT
+// ═══════════════════════════════════════════════════════
+async function init() {
+  // Run boot sequence first
+  await runBootSequence();
+
+  // Hide boot overlay
+  const bootOverlay = $('boot-overlay');
+  const appShell = $('app-shell');
+  if (bootOverlay) bootOverlay.classList.add('hidden');
+  if (appShell) appShell.style.opacity = '1';
+
+  // Init subsystems
+  initAudio();
+  initVoice();
+  startClock();
+  animateDiagnostics();
+  bindEvents();
+
+  // Load settings
+  await loadSettings();
+
+  // Determine initial view from hash
+  const hash = window.location.hash.replace('#', '');
+  const validViews = ['dashboard', 'chat', 'projects', 'operations', 'research', 'memory', 'settings'];
+  const initialView = validViews.includes(hash) ? hash : 'dashboard';
+
+  // Load initial data
+  navigate(initialView);
+
+  // Speak greeting after short delay
+  setTimeout(() => {
+    const greeting = fillTemplate(pickRandom(JARVIS_RESPONSES.greetings), { time: timeOfDay(), name: State.userName });
+    speakText(greeting);
+    updateGreeting();
+    playSuccessSound();
+  }, 800);
+}
+
+// Start when DOM is ready
+document.addEventListener('DOMContentLoaded', init);
