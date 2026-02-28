@@ -113,9 +113,12 @@ const JarvisBrain = (function () {
     },
     greeting: {
       strong: [
-        /^(?:hey|hello|hi|yo|sup|what'?s\s*up|good\s+(?:morning|afternoon|evening|day)|howdy|greetings)/i,
+        // Only match pure greetings — not "hey jarvis" followed by a command
+        /^(?:hey|hello|hi|yo|sup|what'?s\s*up|good\s+(?:morning|afternoon|evening|day)|howdy|greetings)\s*(?:jarvis)?\s*[.!,]*\s*$/i,
       ],
-      weak: []
+      weak: [
+        /^(?:hey|hello|hi|yo)\s+(?:jarvis|there|buddy|man|dude)\b/i,
+      ]
     },
     status_check: {
       strong: [
@@ -167,51 +170,68 @@ const JarvisBrain = (function () {
   // ───────────────────────────────────────────────────
 
   function extractProjectName(text) {
-    // Try quoted names first
+    // Try quoted names first — most explicit
     const quoted = text.match(/["']([^"']+)["']/);
     if (quoted) return quoted[1];
 
-    // "called X" / "named X"
-    const called = text.match(/\b(?:called|named|titled)\s+(.+?)(?:\.|,|$)/i);
-    if (called) return called[1].trim();
+    // "called X" / "named X" — explicit naming
+    const called = text.match(/\b(?:called|named|titled)\s+(.+?)(?:\.|,|!|\?|$)/i);
+    if (called) return _cleanProjectName(called[1]);
 
     // "project about X"
     const about = text.match(/\b(?:project|app|product|platform|venture|startup)\s+(?:about|for|on|around)\s+(.+?)(?:\.|,|!|\?|$)/i);
-    if (about) return about[1].trim();
+    if (about) return _cleanProjectName(about[1]);
 
-    // "thinking about building X" / "planning to create X" etc.
+    // "thinking about building X"
     const thinkBuild = text.match(/\b(?:thinking|planning|considering)\s+(?:about|of)?\s*(?:building|creating|making|starting|launching|developing)\s+(?:a\s+|an\s+|the\s+)?(.+?)(?:\.|,|!|\?|$)/i);
     if (thinkBuild) {
-      let name = thinkBuild[1].trim();
-      name = name.replace(/\s+(?:project|thing|or\s+something|maybe|i\s+think|you\s+know)$/i, '').trim();
-      if (name.length > 2 && name.length < 80) return name;
+      const name = _cleanProjectName(thinkBuild[1]);
+      if (name && name.length > 2 && name.length < 80) return name;
     }
 
-    // "build/create/start X" — grab the object
-    const verb = text.match(/\b(?:build|create|start|launch|make|develop|building|creating|starting|launching|making|developing)\s+(?:a\s+|an\s+|the\s+)?(.+?)(?:\.|,|!|\?|$)/i);
+    // "build/create/start a new project" — WITHOUT a specific name, return null (don't guess)
+    const genericProject = /\b(?:build|create|start|launch|make|develop|begin|kick\s*off)\s+(?:a\s+)?(?:new\s+)?(?:project|app|venture|startup|business)\b/i;
+    if (genericProject.test(text)) {
+      // Check if there's a specific name AFTER "project" like "start a new project for crypto trading"
+      const afterProject = text.match(/\b(?:project|app|venture|startup|business)\s+(?:for|about|on|called|named)\s+(.+?)(?:\.|,|!|\?|$)/i);
+      if (afterProject) return _cleanProjectName(afterProject[1]);
+      // No specific name given — return null so brain asks for one
+      return null;
+    }
+
+    // "build/create X" where X is a specific thing (not generic)
+    const verb = text.match(/\b(?:build|create|start|launch|make|develop)\s+(?:a\s+|an\s+|the\s+)?(.+?)(?:\.|,|!|\?|$)/i);
     if (verb) {
-      let name = verb[1].trim();
-      // Remove trailing filler
-      name = name.replace(/\s+(?:project|thing|app|or\s+something|maybe|i\s+think|you\s+know)$/i, '').trim();
-      if (name.length > 2 && name.length < 80) return name;
+      const name = _cleanProjectName(verb[1]);
+      if (name && name.length > 2 && name.length < 80) return name;
     }
 
-    // "I want/need to X a Y" pattern
+    // "I want/need to build X"
     const wantTo = text.match(/\b(?:want|need|wanna|gotta)\s+(?:to\s+)?(?:build|create|start|make|develop|launch)\s+(?:a\s+|an\s+|the\s+)?(.+?)(?:\.|,|!|\?|$)/i);
     if (wantTo) {
-      let name = wantTo[1].trim();
-      name = name.replace(/\s+(?:project|thing|or\s+something|maybe)$/i, '').trim();
-      if (name.length > 2 && name.length < 80) return name;
+      const name = _cleanProjectName(wantTo[1]);
+      if (name && name.length > 2 && name.length < 80) return name;
     }
 
-    // Last resort: grab the main subject after removing common words
-    const cleaned = text
-      .replace(/\b(i|we|you|me|my|our|the|a|an|this|that|it|was|is|are|be|to|of|and|or|but|in|on|at|for|with|about|so|just|really|think|want|need|should|could|would|let's|let|us|have|has|had|been|being|do|does|did|get|got|go|going|gonna|wanna|like|maybe|perhaps|actually|basically|probably|definitely|honestly|thinking|planning|considering|building|creating|starting|making|launching|developing|i've|i'm|ve|been)\b/gi, '')
-      .replace(/\s+/g, ' ')
-      .trim();
-    if (cleaned.length > 2 && cleaned.length < 60) return cleaned;
-
     return null;
+  }
+
+  // Clean up extracted project names — remove conversational filler
+  function _cleanProjectName(raw) {
+    if (!raw) return null;
+    let name = raw.trim();
+    // Remove trailing conversational phrases that aren't part of the name
+    name = name.replace(/\s*[,.]\s*(?:are you|you ready|ready|right|okay|ok|yes|yeah|let'?s|shall we|can you|will you|what do you think|sounds? good|i think|don'?t you think|is that|isn'?t it|how about|please|thanks?|thank you|sir|boss|jarvis|hey|oh|so|and|but|or|also|then).*$/i, '');
+    // Remove trailing filler words (but keep "app" if preceded by a descriptor)
+    name = name.replace(/\s+(?:project|thing|or\s+something|maybe|i\s+think|you\s+know|new)$/i, '').trim();
+    // Only strip "app" if it's the ONLY word
+    if (name.toLowerCase() === 'app') return null;
+    // Remove leading "new" if it's the only word left
+    if (name.toLowerCase() === 'new') return null;
+    // Too short or too generic
+    if (name.length < 3) return null;
+    if (/^(a|an|the|this|that|it|one|some|my)$/i.test(name)) return null;
+    return name;
   }
 
   function extractMemoryContent(text) {
@@ -626,13 +646,39 @@ const JarvisBrain = (function () {
     const { State } = helpers;
     const userName = State?.userName || 'Sir';
 
+    // Strip wake word prefix — "hey jarvis" is the activation phrase, not part of the command
+    const cleanedText = userText.replace(/^\s*(?:hey|ok|okay)?\s*jarvis\s*[,.]?\s*/i, '').trim() || userText;
+
     // Add to conversation context
-    addToContext('user', userText);
+    addToContext('user', cleanedText);
 
     // Check for pending confirmation first
     if (context.pendingConfirmation) {
-      const detection = detectIntent(userText);
-      if (detection.intent === 'agreement') {
+      const detection = detectIntent(cleanedText);
+
+      // Special case: pending project name request
+      if (context.pendingConfirmation.action === 'create_project_named') {
+        // User is providing the project name
+        if (detection.intent === 'disagreement') {
+          context.pendingConfirmation = null;
+          const response = `No problem, ${userName}. Standing down. What else can I help with?`;
+          addToContext('jarvis', response);
+          return { response, intent: 'disagreement', actionTaken: false };
+        }
+        // Treat whatever they said as the project name (unless it's a completely different command)
+        const possibleName = cleanedText.trim().replace(/^(?:call\s+it|name\s+it|let'?s\s+call\s+it|it'?s?\s+called|how\s+about|maybe)\s+/i, '').replace(/["']/g, '').trim();
+        if (possibleName.length > 1 && possibleName.length < 120) {
+          context.pendingConfirmation = null;
+          const actionResult = await executeAction('create_project', `create project called "${possibleName}"`, api, helpers);
+          const response = generateResponse('create_project', possibleName, actionResult, userName);
+          addToContext('jarvis', response);
+          context.lastIntent = 'create_project';
+          return { response, intent: 'create_project', actionTaken: true, actionResult };
+        }
+        // Couldn't parse — clear and process normally
+        context.pendingConfirmation = null;
+      }
+      else if (detection.intent === 'agreement') {
         const pending = context.pendingConfirmation;
         context.pendingConfirmation = null;
         // Execute the pending action
@@ -658,7 +704,7 @@ const JarvisBrain = (function () {
     }
 
     // Detect intent from natural language
-    const detection = detectIntent(userText);
+    const detection = detectIntent(cleanedText);
     let { intent, confidence } = detection;
 
     // Decide whether to take autonomous action
@@ -671,8 +717,24 @@ const JarvisBrain = (function () {
     let actionTaken = false;
 
     if (shouldAct) {
+      // For create_project: check if we can extract a name first
+      if (intent === 'create_project') {
+        const projectName = extractProjectName(cleanedText);
+        if (!projectName) {
+          // User wants to start a project but didn't give a name — ask for one
+          context.pendingConfirmation = {
+            action: 'create_project_named',
+            data: null,
+            question: `Absolutely, ${userName}. I'm ready to initialize a new project. What would you like to call it?`
+          };
+          const response = context.pendingConfirmation.question;
+          addToContext('jarvis', response);
+          context.lastIntent = 'create_project';
+          return { response, intent: 'create_project', confidence, actionTaken: false };
+        }
+      }
       // High confidence — take action autonomously
-      actionResult = await executeAction(intent, userText, api, helpers);
+      actionResult = await executeAction(intent, cleanedText, api, helpers);
       actionTaken = actionResult !== null;
       if (!actionTaken) {
         // Action failed (couldn't extract entity) — fall back to conversation
@@ -681,7 +743,7 @@ const JarvisBrain = (function () {
     }
 
     // Generate response
-    const response = generateResponse(intent, userText, actionResult, userName);
+    const response = generateResponse(intent, cleanedText, actionResult, userName);
 
     // Update context
     addToContext('jarvis', response);
