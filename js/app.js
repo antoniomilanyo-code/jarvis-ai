@@ -9,7 +9,7 @@
 // ═══════════════════════════════════════════════════════
 //  CONFIGURATION
 // ═══════════════════════════════════════════════════════
-const CGI = '__CGI_BIN__/api.py';
+// localStorage API shim — no server required (GitHub Pages compatible)
 
 const JARVIS_RESPONSES = {
   greetings: [
@@ -110,14 +110,129 @@ const State = {
 const $ = id => document.getElementById(id);
 const $$ = sel => document.querySelectorAll(sel);
 
+// ── localStorage helpers ────────────────────
+const LS_PREFIX = 'jarvis_';
+function lsGet(table) {
+  try { return JSON.parse(localStorage.getItem(LS_PREFIX + table) || 'null'); } catch { return null; }
+}
+function lsSet(table, value) {
+  try { localStorage.setItem(LS_PREFIX + table, JSON.stringify(value)); } catch(e) { console.warn('localStorage write failed:', e); }
+}
+function lsNextId(rows) {
+  return rows.length ? Math.max(...rows.map(r => r.id || 0)) + 1 : 1;
+}
+function parseParams(params) {
+  const p = {};
+  if (!params) return p;
+  params.split('&').forEach(pair => { const [k, v] = pair.split('='); if (k) p[decodeURIComponent(k)] = decodeURIComponent(v || ''); });
+  return p;
+}
+
+// Default settings
+const DEFAULT_SETTINGS = {
+  user_name: 'Sir',
+  voice_rate: 0.9,
+  voice_pitch: 1.0,
+  voice_volume: 1.0,
+  glow_intensity: 1.0,
+  animation_speed: 1.0,
+  theme: 'dark',
+};
+
 function api(action, method = 'GET', body = null, params = '') {
-  const url = `${CGI}?action=${action}${params ? '&' + params : ''}`;
-  const opts = { method, headers: { 'Content-Type': 'application/json' } };
-  if (body) opts.body = JSON.stringify(body);
-  return fetch(url, opts).then(r => r.json()).catch(err => {
+  try {
+    const p = parseParams(params);
+    const now = new Date().toISOString();
+
+    // ── SETTINGS ────────────────────────────────────
+    if (action === 'settings') {
+      if (method === 'GET') {
+        const stored = lsGet('settings');
+        return Promise.resolve(Object.assign({}, DEFAULT_SETTINGS, stored || {}));
+      }
+      if (method === 'POST' && body) {
+        const current = Object.assign({}, DEFAULT_SETTINGS, lsGet('settings') || {});
+        const updated = Object.assign(current, body);
+        lsSet('settings', updated);
+        return Promise.resolve(updated);
+      }
+    }
+
+    // ── GENERIC TABLE ACTIONS ────────────────────
+    // Tables stored as arrays: conversations, projects, tasks, memories, research, operations
+    let rows = lsGet(action);
+    if (!Array.isArray(rows)) rows = [];
+
+    if (method === 'GET') {
+      let result = rows;
+
+      // Filter by id
+      if (p.id) {
+        const id = parseInt(p.id, 10);
+        result = rows.find(r => r.id === id) || null;
+        return Promise.resolve(result);
+      }
+
+      // Filter by project_id (tasks)
+      if (p.project_id) {
+        const pid = parseInt(p.project_id, 10);
+        result = rows.filter(r => r.project_id === pid);
+      }
+
+      // Search filter (conversations, memories)
+      if (p.search) {
+        const q = p.search.toLowerCase();
+        result = result.filter(r =>
+          Object.values(r).some(v => typeof v === 'string' && v.toLowerCase().includes(q))
+        );
+      }
+
+      // Limit (conversations, operations default 20)
+      if (p.limit) {
+        const lim = parseInt(p.limit, 10);
+        result = result.slice(-lim);
+      } else if (action === 'operations') {
+        result = result.slice(-20);
+      }
+
+      return Promise.resolve(result);
+    }
+
+    if (method === 'POST' && body) {
+      const newRow = Object.assign({ id: lsNextId(rows), created_at: now }, body);
+      rows.push(newRow);
+      lsSet(action, rows);
+      return Promise.resolve(newRow);
+    }
+
+    if (method === 'PUT' && body) {
+      const id = parseInt(p.id || body.id, 10);
+      const idx = rows.findIndex(r => r.id === id);
+      if (idx !== -1) {
+        rows[idx] = Object.assign({}, rows[idx], body, { id: rows[idx].id });
+        lsSet(action, rows);
+        return Promise.resolve(rows[idx]);
+      }
+      return Promise.resolve(null);
+    }
+
+    if (method === 'DELETE') {
+      if (p.id) {
+        const id = parseInt(p.id, 10);
+        rows = rows.filter(r => r.id !== id);
+        lsSet(action, rows);
+        return Promise.resolve({ deleted: id });
+      }
+      // Clear all
+      lsSet(action, []);
+      return Promise.resolve({ cleared: true });
+    }
+
+    return Promise.resolve(null);
+  } catch (err) {
     console.warn(`API ${action} failed:`, err);
-    return null;
-  });
+    return Promise.resolve(null);
+  }
 }
 
 function pickRandom(arr) {
@@ -1883,106 +1998,77 @@ function bindEvents() {
     let debounce;
     memSearch.addEventListener('input', () => {
       clearTimeout(debounce);
-      debounce = setTimeout(() => loadMemory(memSearch.value), 300);
+      debounce = setTimeout(() => loadMemory(memSearch.value.trim()), 300);
     });
   }
 
-  // Mobile nav bottom bar
-  const isMobile = () => window.innerWidth <= 600;
-  function updateBottomBar() {
-    $$('.mobile-nav-btn').forEach(b => b.style.display = isMobile() ? 'flex' : 'none');
-    $$('.mobile-nav-btn').forEach(b => { if (!isMobile()) b.style.display = 'none'; });
-    const qp = $('quick-project-btn');
-    const qr = $('quick-research-btn');
-    const qm = $('quick-memory-btn');
-    if (!isMobile()) {
-      [qp, qr, qm].forEach(el => { if (el) el.style.display = 'inline-flex'; });
-    } else {
-      [qp, qr, qm].forEach(el => { if (el) el.style.display = 'none'; });
-    }
+  // Hash-based routing on load
+  const hash = window.location.hash.slice(1);
+  const validViews = ['dashboard', 'chat', 'projects', 'operations', 'research', 'memory', 'settings'];
+  if (validViews.includes(hash)) {
+    navigate(hash);
   }
-  updateBottomBar();
-  window.addEventListener('resize', updateBottomBar);
-
-  // Handle hash routing
-  window.addEventListener('hashchange', () => {
-    const hash = window.location.hash.replace('#', '');
-    if (hash) navigate(hash);
-  });
 }
 
 // ═══════════════════════════════════════════════════════
 //  BOOT SEQUENCE
 // ═══════════════════════════════════════════════════════
-function runBootSequence() {
-  return new Promise(resolve => {
-    const bar = $('boot-bar');
-    const statusText = $('boot-status-text');
-    const steps = [
-      [10, 'Loading JARVIS core systems...'],
-      [25, 'Initializing arc reactor interface...'],
-      [40, 'Connecting to Stark database...'],
-      [55, 'Loading voice recognition module...'],
-      [70, 'Synchronizing memory banks...'],
-      [85, 'Running system diagnostics...'],
-      [95, 'Finalizing interface protocols...'],
-      [100, 'All systems operational.'],
-    ];
+const BOOT_STEPS = [
+  { text: 'Initializing core systems...', pct: 10 },
+  { text: 'Loading neural pathways...', pct: 22 },
+  { text: 'Calibrating voice synthesis...', pct: 38 },
+  { text: 'Connecting to knowledge matrix...', pct: 52 },
+  { text: 'Synchronizing operational data...', pct: 67 },
+  { text: 'Activating HUD interface...', pct: 80 },
+  { text: 'Running final diagnostics...', pct: 92 },
+  { text: 'JARVIS online. Ready.', pct: 100 },
+];
 
-    let i = 0;
-    const next = () => {
-      if (i >= steps.length) {
-        setTimeout(resolve, 400);
-        return;
-      }
-      const [pct, msg] = steps[i++];
-      if (bar) bar.style.width = pct + '%';
-      if (statusText) statusText.textContent = msg;
-      setTimeout(next, 280 + Math.random() * 120);
-    };
-    next();
-  });
-}
+async function runBootSequence() {
+  const overlay = $('boot-overlay');
+  const statusText = $('boot-status-text');
+  const bar = $('boot-bar');
 
-// ═══════════════════════════════════════════════════════
-//  INIT
-// ═══════════════════════════════════════════════════════
-async function init() {
-  // Run boot sequence first
-  await runBootSequence();
+  for (const step of BOOT_STEPS) {
+    if (statusText) statusText.textContent = step.text;
+    if (bar) bar.style.width = step.pct + '%';
+    await new Promise(r => setTimeout(r, 280 + Math.random() * 150));
+  }
 
-  // Hide boot overlay
-  const bootOverlay = $('boot-overlay');
-  const appShell = $('app-shell');
-  if (bootOverlay) bootOverlay.classList.add('hidden');
-  if (appShell) appShell.style.opacity = '1';
+  // Fade out boot overlay
+  if (overlay) overlay.classList.add('hidden');
 
-  // Init subsystems
-  initAudio();
-  initVoice();
+  // Show app shell
+  const shell = $('app-shell');
+  if (shell) {
+    setTimeout(() => { shell.style.opacity = '1'; }, 100);
+  }
+
+  // Load initial settings + data
+  const settings = await loadSettings();
+  loadDashboard();
   startClock();
+  updateGreeting();
   animateDiagnostics();
   bindEvents();
+  initVoice();
+  initAudio();
 
-  // Load settings
-  await loadSettings();
-
-  // Determine initial view from hash
-  const hash = window.location.hash.replace('#', '');
-  const validViews = ['dashboard', 'chat', 'projects', 'operations', 'research', 'memory', 'settings'];
-  const initialView = validViews.includes(hash) ? hash : 'dashboard';
-
-  // Load initial data
-  navigate(initialView);
-
-  // Speak greeting after short delay
+  // Greet the user
   setTimeout(() => {
-    const greeting = fillTemplate(pickRandom(JARVIS_RESPONSES.greetings), { time: timeOfDay(), name: State.userName });
-    speakText(greeting);
-    updateGreeting();
-    playSuccessSound();
+    const tod = timeOfDay();
+    speakText(fillTemplate(pickRandom(JARVIS_RESPONSES.greetings), { time: tod }));
   }, 800);
 }
 
-// Start when DOM is ready
-document.addEventListener('DOMContentLoaded', init);
+// Register Service Worker
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('./sw.js').catch(err => {
+      console.log('Service Worker registration failed:', err);
+    });
+  });
+}
+
+// Start
+document.addEventListener('DOMContentLoaded', runBootSequence);
