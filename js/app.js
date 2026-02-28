@@ -104,6 +104,24 @@ const State = {
   elevenLabsAudio: null,  // current Audio element for streaming
 };
 
+// Audio element for ElevenLabs TTS — primed on first user interaction to bypass autoplay
+let _elAudio = null;
+let _audioUnlocked = false;
+
+function _unlockAudio() {
+  if (_audioUnlocked) return;
+  _audioUnlocked = true;
+  // Create and prime an audio element with a silent sample
+  _elAudio = new Audio();
+  const ctx = State.audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+  if (ctx.state === 'suspended') ctx.resume();
+  State.audioCtx = ctx;
+  // Play silent audio to unlock the element
+  _elAudio.src = 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA=';
+  _elAudio.volume = 0;
+  _elAudio.play().then(() => { _elAudio.pause(); _elAudio.volume = 1; }).catch(() => {});
+}
+
 // ═══════════════════════════════════════════════════════
 //  UTILITIES
 // ═══════════════════════════════════════════════════════
@@ -240,7 +258,7 @@ function pickRandom(arr) {
 }
 
 function fillTemplate(str, vars = {}) {
-  return str.replace(/{(\w+)}/g, (_, k) => vars[k] || State.userName || 'Sir');
+  return str.replace(/\{(\w+)\}/g, (_, k) => vars[k] || State.userName || 'Sir');
 }
 
 function timeOfDay() {
@@ -574,6 +592,7 @@ async function typewriterEffect(el, text, speed = 18) {
 }
 
 async function sendUserMessage(text) {
+  _unlockAudio();
   if (!text.trim()) return;
   playClickSound();
 
@@ -1020,7 +1039,10 @@ async function _speakElevenLabs(text) {
     // Stream audio response
     const audioBlob = await response.blob();
     const audioUrl = URL.createObjectURL(audioBlob);
-    const audio = new Audio(audioUrl);
+
+    // Use the pre-unlocked audio element (or create new if not primed)
+    const audio = _elAudio || new Audio();
+    audio.src = audioUrl;
     audio.volume = State.voiceSettings.volume;
     State.elevenLabsAudio = audio;
 
@@ -1033,7 +1055,6 @@ async function _speakElevenLabs(text) {
       } else {
         if (!State.isListening) {
           setArcState('idle');
-          // Continuous mode: auto-restart listening after JARVIS finishes speaking
           if (State.continuousMode && State.recognition) {
             setTimeout(() => {
               if (!State.isListening && !State.isSpeaking) {
@@ -1054,7 +1075,21 @@ async function _speakElevenLabs(text) {
       if (State.speechQueue.length > 0) setTimeout(_processSpeechQueue, 200);
     };
 
-    await audio.play();
+    try {
+      await audio.play();
+    } catch (playErr) {
+      console.warn('Audio play blocked, retrying with user gesture workaround:', playErr);
+      // Last resort: create fresh audio element
+      const fallbackAudio = new Audio(audioUrl);
+      fallbackAudio.volume = State.voiceSettings.volume;
+      State.elevenLabsAudio = fallbackAudio;
+      fallbackAudio.onended = audio.onended;
+      fallbackAudio.onerror = audio.onerror;
+      try { await fallbackAudio.play(); } catch(e2) {
+        console.warn('All audio play attempts failed, falling back to browser TTS');
+        _speakBrowserTTS(text);
+      }
+    }
   } catch (err) {
     console.warn('ElevenLabs fetch error:', err, '— falling back to browser TTS');
     _speakBrowserTTS(text);
@@ -1657,6 +1692,10 @@ function closeModal(id) {
 //  EVENT LISTENERS
 // ═══════════════════════════════════════════════════════
 function bindEvents() {
+  // Unlock audio on first user interaction (for ElevenLabs TTS autoplay)
+  document.addEventListener('click', _unlockAudio, { once: true });
+  document.addEventListener('touchstart', _unlockAudio, { once: true });
+
   // Navigation (sidebar + bottom bar)
   $$('[data-view]').forEach(btn => {
     btn.addEventListener('click', () => {
@@ -2027,6 +2066,200 @@ function bindEvents() {
 }
 
 // ═══════════════════════════════════════════════════════
+//  PIN LOCK SYSTEM
+// ═══════════════════════════════════════════════════════
+const PIN_STORAGE_KEY = 'jarvis_pin_hash';
+const PIN_SESSION_KEY = 'jarvis_authenticated';
+const PIN_MIN_LENGTH = 4;
+const PIN_MAX_LENGTH = 6;
+const PIN_MAX_ATTEMPTS = 5;
+const PIN_LOCKOUT_MS = 30000;
+
+let _pinBuffer = '';
+let _pinAttempts = 0;
+let _pinLocked = false;
+let _pinMode = 'verify'; // 'setup' | 'verify' | 'confirm_setup'
+let _pinSetupFirst = '';
+
+async function _hashPin(pin) {
+  const encoder = new TextEncoder();
+  const data = encoder.encode('jarvis_salt_' + pin);
+  const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+  return Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+function _initPinSystem() {
+  const overlay = document.getElementById('pin-overlay');
+  if (!overlay) return _startBoot();
+
+  // Already authenticated this session?
+  if (sessionStorage.getItem(PIN_SESSION_KEY) === 'true') {
+    overlay.classList.add('hidden');
+    return _startBoot();
+  }
+
+  const storedHash = localStorage.getItem(PIN_STORAGE_KEY);
+  if (!storedHash) {
+    _pinMode = 'setup';
+    document.getElementById('pin-title').textContent = 'CREATE ACCESS CODE';
+    document.getElementById('pin-subtitle').textContent = 'Set a 4-6 digit code to secure JARVIS';
+  } else {
+    _pinMode = 'verify';
+    document.getElementById('pin-title').textContent = 'ENTER ACCESS CODE';
+    document.getElementById('pin-subtitle').textContent = 'Identity verification required';
+  }
+
+  // Keypad click handler
+  document.getElementById('pin-keypad').addEventListener('click', (e) => {
+    const key = e.target.closest('.pin-key')?.dataset?.key;
+    if (!key || _pinLocked) return;
+    if (key === 'clear') {
+      _pinBuffer = '';
+      _updatePinDots();
+      _clearPinError();
+    } else if (key === 'enter') {
+      _submitPin();
+    } else {
+      if (_pinBuffer.length < PIN_MAX_LENGTH) {
+        _pinBuffer += key;
+        _updatePinDots();
+        _clearPinError();
+        // Auto-submit when reaching max length
+        if (_pinBuffer.length === PIN_MAX_LENGTH) {
+          setTimeout(_submitPin, 200);
+        }
+      }
+    }
+  });
+
+  // Also allow physical keyboard
+  document.addEventListener('keydown', (e) => {
+    const overlay = document.getElementById('pin-overlay');
+    if (!overlay || overlay.classList.contains('hidden') || _pinLocked) return;
+    if (e.key >= '0' && e.key <= '9') {
+      if (_pinBuffer.length < PIN_MAX_LENGTH) {
+        _pinBuffer += e.key;
+        _updatePinDots();
+        _clearPinError();
+        if (_pinBuffer.length === PIN_MAX_LENGTH) setTimeout(_submitPin, 200);
+      }
+    } else if (e.key === 'Backspace') {
+      _pinBuffer = _pinBuffer.slice(0, -1);
+      _updatePinDots();
+    } else if (e.key === 'Enter') {
+      _submitPin();
+    }
+  });
+}
+
+function _updatePinDots() {
+  const dots = document.querySelectorAll('#pin-dots .pin-dot');
+  dots.forEach((dot, i) => {
+    dot.classList.toggle('filled', i < _pinBuffer.length);
+    dot.classList.remove('error');
+  });
+}
+
+function _showPinError(msg) {
+  const el = document.getElementById('pin-error');
+  if (el) el.textContent = msg;
+  const dots = document.querySelectorAll('#pin-dots .pin-dot');
+  dots.forEach(d => d.classList.add('error'));
+  setTimeout(() => dots.forEach(d => d.classList.remove('error')), 600);
+}
+
+function _clearPinError() {
+  const el = document.getElementById('pin-error');
+  if (el) el.textContent = '';
+}
+
+async function _submitPin() {
+  if (_pinBuffer.length < PIN_MIN_LENGTH) {
+    _showPinError(`Minimum ${PIN_MIN_LENGTH} digits required`);
+    return;
+  }
+
+  if (_pinMode === 'setup') {
+    _pinSetupFirst = _pinBuffer;
+    _pinBuffer = '';
+    _pinMode = 'confirm_setup';
+    document.getElementById('pin-title').textContent = 'CONFIRM ACCESS CODE';
+    document.getElementById('pin-subtitle').textContent = 'Enter the code again to confirm';
+    _updatePinDots();
+    return;
+  }
+
+  if (_pinMode === 'confirm_setup') {
+    if (_pinBuffer !== _pinSetupFirst) {
+      _showPinError('Codes do not match — try again');
+      _pinBuffer = '';
+      _pinMode = 'setup';
+      _pinSetupFirst = '';
+      document.getElementById('pin-title').textContent = 'CREATE ACCESS CODE';
+      document.getElementById('pin-subtitle').textContent = 'Set a 4-6 digit code to secure JARVIS';
+      _updatePinDots();
+      return;
+    }
+    // Save the PIN hash
+    const hash = await _hashPin(_pinBuffer);
+    localStorage.setItem(PIN_STORAGE_KEY, hash);
+    sessionStorage.setItem(PIN_SESSION_KEY, 'true');
+    _pinBuffer = '';
+    // Show success and proceed
+    document.getElementById('pin-title').textContent = 'ACCESS CODE SET';
+    document.getElementById('pin-subtitle').textContent = 'Initializing JARVIS...';
+    document.getElementById('pin-keypad').style.display = 'none';
+    document.querySelectorAll('#pin-dots .pin-dot').forEach(d => { d.classList.add('filled'); d.classList.remove('error'); });
+    setTimeout(() => {
+      document.getElementById('pin-overlay').classList.add('hidden');
+      _startBoot();
+    }, 1200);
+    return;
+  }
+
+  if (_pinMode === 'verify') {
+    const hash = await _hashPin(_pinBuffer);
+    const stored = localStorage.getItem(PIN_STORAGE_KEY);
+    if (hash === stored) {
+      sessionStorage.setItem(PIN_SESSION_KEY, 'true');
+      _pinAttempts = 0;
+      // Success animation
+      document.querySelectorAll('#pin-dots .pin-dot').forEach(d => { d.classList.add('filled'); d.classList.remove('error'); });
+      document.getElementById('pin-title').textContent = 'ACCESS GRANTED';
+      document.getElementById('pin-subtitle').textContent = 'Welcome back, Sir';
+      document.getElementById('pin-keypad').style.display = 'none';
+      setTimeout(() => {
+        document.getElementById('pin-overlay').classList.add('hidden');
+        _startBoot();
+      }, 1000);
+    } else {
+      _pinAttempts++;
+      _pinBuffer = '';
+      _updatePinDots();
+      if (_pinAttempts >= PIN_MAX_ATTEMPTS) {
+        _pinLocked = true;
+        _showPinError('Too many attempts — locked for 30 seconds');
+        document.getElementById('pin-keypad').style.opacity = '0.3';
+        document.getElementById('pin-keypad').style.pointerEvents = 'none';
+        setTimeout(() => {
+          _pinLocked = false;
+          _pinAttempts = 0;
+          _clearPinError();
+          document.getElementById('pin-keypad').style.opacity = '1';
+          document.getElementById('pin-keypad').style.pointerEvents = 'auto';
+        }, PIN_LOCKOUT_MS);
+      } else {
+        _showPinError(`Invalid code — ${PIN_MAX_ATTEMPTS - _pinAttempts} attempts remaining`);
+      }
+    }
+  }
+}
+
+function _startBoot() {
+  init();
+}
+
+// ═══════════════════════════════════════════════════════
 //  BOOT SEQUENCE
 // ═══════════════════════════════════════════════════════
 function runBootSequence() {
@@ -2100,4 +2333,4 @@ async function init() {
 }
 
 // Start when DOM is ready
-document.addEventListener('DOMContentLoaded', init);
+document.addEventListener('DOMContentLoaded', _initPinSystem);
