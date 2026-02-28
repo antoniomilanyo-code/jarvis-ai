@@ -1111,7 +1111,6 @@ body::before {
 
   /* Dashboard: single column, smooth scrolling */
   #view-dashboard {
-    display: flex;
     flex-direction: column;
     gap: var(--sp-4);
     padding: var(--sp-4);
@@ -1144,7 +1143,6 @@ body::before {
 
   /* Chat: full height with fixed input at bottom */
   #view-chat {
-    display: flex;
     flex-direction: column;
     height: calc(100dvh - var(--header-h) - var(--bottom-bar-h));
   }
