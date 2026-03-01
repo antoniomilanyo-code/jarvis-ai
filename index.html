@@ -31,15 +31,27 @@
         <circle cx="60" cy="60" r="18" fill="none" stroke="#00d4ff" stroke-width="0.75" stroke-opacity="0.5"/>
       </svg>
     </div>
-    <div class="pin-title" id="pin-title">ENTER ACCESS CODE</div>
+    <div class="pin-title" id="pin-title">JARVIS ACCESS</div>
     <div class="pin-subtitle" id="pin-subtitle">Identity verification required</div>
-    <!-- Native input that iOS keyboard can type into -->
-    <div class="pin-input-wrap">
-      <input type="tel" id="pin-input" class="pin-native-input" maxlength="6" inputmode="numeric" pattern="[0-9]*" autocomplete="off" placeholder="• • • • • •">
+    <!-- Login Form -->
+    <div id="auth-login-form">
+      <div class="pin-input-wrap">
+        <input type="text" id="auth-username" class="pin-native-input" autocomplete="username" placeholder="Username" style="margin-bottom:8px;font-size:16px;letter-spacing:1px;">
+      </div>
+      <div class="pin-input-wrap">
+        <input type="password" id="auth-password" class="pin-native-input" autocomplete="current-password" placeholder="Password" style="font-size:16px;letter-spacing:1px;">
+      </div>
+      <button class="pin-submit-btn" id="auth-submit-btn" type="button">LOGIN</button>
     </div>
-    <button class="pin-submit-btn" id="pin-submit-btn" type="button">VERIFY</button>
+    <!-- Legacy PIN Form (hidden by default, shown if no auth account) -->
+    <div id="auth-pin-form" style="display:none">
+      <div class="pin-input-wrap">
+        <input type="tel" id="pin-input" class="pin-native-input" maxlength="6" inputmode="numeric" pattern="[0-9]*" autocomplete="off" placeholder="• • • • • •">
+      </div>
+      <button class="pin-submit-btn" id="pin-submit-btn" type="button">VERIFY</button>
+    </div>
     <div class="pin-error" id="pin-error"></div>
-    <div class="pin-footer" id="pin-footer">Tap the field above to enter your code</div>
+    <div class="pin-footer" id="pin-footer">Enter your credentials to access JARVIS</div>
   </div>
 </div>
 
