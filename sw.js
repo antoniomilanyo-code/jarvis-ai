@@ -1,4 +1,4 @@
-// JARVIS Service Worker v5 — PWA install + always-fresh assets
+// JARVIS Service Worker v4 — PWA install + always-fresh assets
 const CACHE_NAME = 'jarvis-v5';
 const SHELL_ASSETS = [
   './',
