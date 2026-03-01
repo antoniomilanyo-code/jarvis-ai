@@ -117,13 +117,17 @@ def init_db(conn):
             conversation_id INTEGER,
             project_id INTEGER,
             title TEXT NOT NULL,
+            description TEXT DEFAULT '',
             objective TEXT DEFAULT '',
             reasoning TEXT DEFAULT '',
+            priority TEXT DEFAULT 'medium',
             steps_json TEXT DEFAULT '[]',
             required_tools_json TEXT DEFAULT '[]',
             risk_level TEXT DEFAULT 'low',
             impact_level TEXT DEFAULT 'medium',
             status TEXT DEFAULT 'proposed',
+            rejection_reason TEXT DEFAULT '',
+            approved_at TEXT DEFAULT '',
             created_at TEXT DEFAULT (datetime('now')),
             updated_at TEXT DEFAULT (datetime('now')),
             FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE SET NULL
@@ -181,6 +185,11 @@ def _migrate(conn):
     migrations = [
         ("memories", "category", "TEXT DEFAULT 'general'"),
         ("memories", "importance", "INTEGER DEFAULT 5"),
+        # P1: task_proposals new columns
+        ("task_proposals", "description", "TEXT DEFAULT ''"),
+        ("task_proposals", "priority", "TEXT DEFAULT 'medium'"),
+        ("task_proposals", "rejection_reason", "TEXT DEFAULT ''"),
+        ("task_proposals", "approved_at", "TEXT DEFAULT ''"),
     ]
     for table, col, col_def in migrations:
         try:
@@ -525,13 +534,15 @@ def handle_task_proposals(conn, method, params, body):
     elif method == 'POST':
         conn.execute(
             """INSERT INTO task_proposals
-               (conversation_id, project_id, title, objective, reasoning,
-                steps_json, required_tools_json, risk_level, impact_level, status)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+               (conversation_id, project_id, title, description, objective, reasoning,
+                priority, steps_json, required_tools_json, risk_level, impact_level, status)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (body.get('conversation_id'), body.get('project_id'),
              body.get('title', 'Untitled Proposal'),
+             body.get('description', ''),
              body.get('objective', ''),
              body.get('reasoning', ''),
+             body.get('priority', 'medium'),
              json.dumps(body.get('steps', [])),
              json.dumps(body.get('required_tools', [])),
              body.get('risk_level', 'low'),
@@ -544,8 +555,8 @@ def handle_task_proposals(conn, method, params, body):
     elif method == 'PUT':
         pid = params.get('id') or body.get('id')
         fields = {k: v for k, v in body.items() if k in (
-            'title', 'objective', 'reasoning', 'status', 'project_id',
-            'risk_level', 'impact_level'
+            'title', 'description', 'objective', 'reasoning', 'status', 'project_id',
+            'priority', 'risk_level', 'impact_level', 'rejection_reason', 'approved_at'
         )}
         # Handle JSON fields
         if 'steps' in body:
