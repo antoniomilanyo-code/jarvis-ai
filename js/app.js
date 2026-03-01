@@ -6,9 +6,9 @@
 
 'use strict';
 
-// ══════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════
 //  CONFIGURATION
-// ══════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════
 // Remote API with in-memory cache (server-backed)
 
 const JARVIS_RESPONSES = {
@@ -67,9 +67,9 @@ const JARVIS_RESPONSES = {
 • "status" — System diagnostics report`,
 };
 
-// ══════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════
 //  APPLICATION STATE
-// ══════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════
 const State = {
   currentView: 'dashboard',
   currentProjectId: null,
@@ -94,7 +94,7 @@ const State = {
   // ElevenLabs TTS
   elevenLabs: {
     enabled: true,
-    apiKey: 'ae057a5a1eac4465a8d4ad630bda48d0a6aad444db35a024543ef5174846 4e43',
+    apiKey: 'ae057a5a1eac4465a8d4ad630bda48d0a6aad444db35a024543ef51748464e43',
     voiceId: 'P3TTlDkzxma0sdCGP8YZ',
     model: 'eleven_multilingual_v2',
     stability: 0.5,
@@ -122,13 +122,13 @@ function _unlockAudio() {
   _elAudio.play().then(() => { _elAudio.pause(); _elAudio.volume = 1; }).catch(() => {});
 }
 
-// ══════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════
 //  UTILITIES
-// ══════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════
 const $ = id => document.getElementById(id);
 const $$ = sel => document.querySelectorAll(sel);
 
-// ── In-memory cache helpers ──────────────────────────────────────────
+// ── In-memory cache helpers ──────────────────────────────
 const _memCache = {};
 function lsGet(table) {
   return _memCache[table] || null;
@@ -158,12 +158,12 @@ const DEFAULT_SETTINGS = {
   continuous_mode: 'true',
   wake_word: 'true',
   el_enabled: 'true',
-  el_apikey: 'ae057a5a1eac4465a8d4ad630bda48d0a6aad444db35a024543ef5174846 4e43',
+  el_apikey: 'ae057a5a1eac4465a8d4ad630bda48d0a6aad444db35a024543ef51748464e43',
   el_voiceid: 'P3TTlDkzxma0sdCGP8YZ',
   el_model: 'eleven_multilingual_v2',
 };
 
-// ── Remote API Configuration ─────────────────────────────────────────
+// ── Remote API Configuration ─────────────────────────
 const API_BASE = '__CGI_BIN__/api.py';
 
 async function api(action, method = 'GET', body = null, params = '') {
@@ -200,7 +200,7 @@ async function api(action, method = 'GET', body = null, params = '') {
       }
     }
 
-    // ── ALL OTHER TABLES: fetch from remote API ─────────────────────
+    // ── ALL OTHER TABLES: fetch from remote API ─────────────
     let url = `${API_BASE}?action=${encodeURIComponent(action)}`;
     if (params) url += '&' + params;
 
@@ -221,7 +221,7 @@ async function api(action, method = 'GET', body = null, params = '') {
     return data;
   } catch (err) {
     console.warn(`API ${action} failed, falling back to cache:`, err);
-    // ── Offline fallback: use memory cache ──────────────────────────
+    // ── Offline fallback: use memory cache ──────────
     if (action === 'settings') {
       return Object.assign({}, DEFAULT_SETTINGS, lsGet('settings') || {});
     }
@@ -261,9 +261,9 @@ function escHtml(str) {
   return d.innerHTML;
 }
 
-// ══════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════
 //  AUDIO ENGINE — Web Audio API tones
-// ══════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════
 function initAudio() {
   try {
     State.audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -301,9 +301,9 @@ function playVoiceStartSound() {
   setTimeout(() => playTone(1100, 80, 'sine', 0.05), 80);
 }
 
-// ══════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════
 //  TOAST NOTIFICATIONS
-// ══════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════
 function showToast(msg, duration = 3500) {
   const container = $('toast-container');
   const toast = document.createElement('div');
@@ -316,9 +316,9 @@ function showToast(msg, duration = 3500) {
   }, duration);
 }
 
-// ══════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════
 //  CLOCK & GREETING
-// ══════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════
 function startClock() {
   function update() {
     const now = new Date();
@@ -343,9 +343,9 @@ function updateGreeting() {
   }
 }
 
-// ══════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════
 //  DIAGNOSTICS ANIMATION
-// ══════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════
 function animateDiagnostics() {
   function jitter(base, range) {
     return Math.min(99, Math.max(1, base + (Math.random() - 0.5) * range));
@@ -369,9 +369,9 @@ function animateDiagnostics() {
   }, 2500);
 }
 
-// ══════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════
 //  ROUTING — View Navigation
-// ══════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════
 function navigate(viewName) {
   if (!viewName) return;
   playNavSound();
@@ -414,9 +414,9 @@ function navigate(viewName) {
   else if (viewName === 'settings') loadSettings();
 }
 
-// ══════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════
 //  KPI COUNTER ANIMATION
-// ══════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════
 function animateCount(el, target) {
   if (!el) return;
   const start = parseInt(el.textContent) || 0;
@@ -432,9 +432,9 @@ function animateCount(el, target) {
   requestAnimationFrame(step);
 }
 
-// ══════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════
 //  DASHBOARD
-// ══════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════
 async function loadDashboard() {
   const [projects, memories, operations, convos, scheduledTasks] = await Promise.all([
     api('projects'),
@@ -491,9 +491,9 @@ async function loadDashboard() {
   }
 }
 
-// ══════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════
 //  CHAT
-// ══════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════
 async function loadChat() {
   const convos = await api('conversations', 'GET', null, 'limit=100') || [];
   const container = $('chat-messages');
@@ -565,7 +565,7 @@ function removeTypingIndicator() {
   if (el) el.remove();
 }
 
-async function typwriterEffect(el, text, speed = 18) {
+async function typewriterEffect(el, text, speed = 18) {
   el.textContent = '';
   for (let i = 0; i < text.length; i++) {
     el.textContent += text[i];
@@ -573,1053 +573,1877 @@ async function typwriterEffect(el, text, speed = 18) {
   }
 }
 
-async function sendMessage(inputEl) {
-  const text = inputEl.value.trim();
-  if (!text) return;
-  inputEl.value = '';
+async function sendUserMessage(text) {
   _unlockAudio();
+  if (!text.trim()) return;
+  playClickSound();
 
-  // Navigate to chat view if not already there
-  if (State.currentView !== 'chat') navigate('chat');
+  // Show user message
+  if (State.currentView === 'chat') appendChatMessage('user', text);
 
-  appendChatMessage('user', text);
-  await api('conversations', 'POST', { role: 'user', content: text });
+  // Update arc transcript
+  const transcript = $('arc-transcript');
+  if (transcript) transcript.textContent = text;
 
-  const typing = showTypingIndicator();
-  const response = await processCommand(text);
-  removeTypingIndicator();
+  // Save to backend
+  api('conversations', 'POST', { role: 'user', content: text });
 
-  appendChatMessage('jarvis', response);
-  await api('conversations', 'POST', { role: 'jarvis', content: response });
-  speak(response);
+  // ── BRAIN INTEGRATION ──
+  // Pass to JarvisBrain for NLU processing (autonomous decision-making)
+  const brainHelpers = {
+    navigate, loadProjects, loadDashboard, loadOperations, loadResearch,
+    loadSchedule, loadMemory, renderKanban, playSuccessSound, showToast, openModal,
+    State, CinematicVFX: window.CinematicVFX
+  };
+
+  let brainResult;
+  try {
+    brainResult = await JarvisBrain.process(text, api, brainHelpers);
+  } catch (err) {
+    console.warn('JarvisBrain error, falling back:', err);
+    brainResult = { response: `Processing error detected, ${State.userName}. My apologies — could you rephrase that?`, intent: 'error', actionTaken: false };
+  }
+
+  await deliverJarvisResponse(brainResult, text);
 }
 
-// ══════════════════════════════════════════════════════════
-//  COMMAND PROCESSOR
-// ══════════════════════════════════════════════════════════
+// processCommand() — LEGACY: replaced by JarvisBrain.process()
+// Kept as reference. All intent detection now handled by brain.js.
 async function processCommand(input) {
-  const raw = input.trim();
-  const lower = raw.toLowerCase();
+  // This function is no longer called. JarvisBrain handles all input.
+  return `I'm processing that, ${State.userName}.`;
+}
 
-  await new Promise(r => setTimeout(r, 300 + Math.random() * 400));
+async function deliverJarvisResponse(brainResult, userInput) {
+  const responseText = typeof brainResult === 'string' ? brainResult : brainResult.response;
+  const intent = brainResult?.intent || 'casual_chat';
+  const actionTaken = brainResult?.actionTaken || false;
 
-  // Help
-  if (lower === 'help' || lower === '?') {
-    return fillTemplate(JARVIS_RESPONSES.help);
+  // Show typing indicator in chat
+  let typingEl = null;
+  if (State.currentView === 'chat') {
+    typingEl = showTypingIndicator();
   }
 
-  // Time
-  if (lower.includes('time') && (lower.includes('what') || lower.includes('current') || lower.includes('now'))) {
-    const now = new Date();
-    return `Current time: ${now.toLocaleTimeString()} on ${now.toLocaleDateString()}.`;
-  }
-
-  // Status
-  if (lower === 'status' || lower === 'system status' || lower === 'diagnostics') {
-    return `All systems nominal, ${State.userName}. Neural network: online. Memory banks: accessible. Voice interface: ${State.isListening ? 'active' : 'standby'}. ElevenLabs TTS: ${State.elevenLabs.enabled ? 'enabled' : 'disabled'}.`;
-  }
-
-  // Navigate dashboard
-  if (lower.includes('dashboard') || lower.includes('home') || lower.includes('command center')) {
-    setTimeout(() => navigate('dashboard'), 300);
-    return `Navigating to command center, ${State.userName}.`;
-  }
-
-  // Navigate projects
-  if (lower.includes('show project') || lower.includes('open project') || lower.includes('projects')) {
-    setTimeout(() => navigate('projects'), 300);
-    return `Opening project matrix, ${State.userName}.`;
-  }
-
-  // Navigate chat
-  if (lower.includes('show chat') || lower.includes('open chat') || lower === 'chat') {
-    setTimeout(() => navigate('chat'), 300);
-    return `Opening communications panel, ${State.userName}.`;
-  }
-
-  // Navigate operations
-  if (lower.includes('operations') || lower.includes('show ops')) {
-    setTimeout(() => navigate('operations'), 300);
-    return `Loading operations monitor, ${State.userName}.`;
-  }
-
-  // Navigate research
-  if (lower.includes('show research') || lower.includes('open research')) {
-    setTimeout(() => navigate('research'), 300);
-    return `Opening research center, ${State.userName}.`;
-  }
-
-  // Navigate memory
-  if (lower.includes('show memory') || lower.includes('memory bank') || lower.includes('open memory')) {
-    setTimeout(() => navigate('memory'), 300);
-    return `Accessing memory banks, ${State.userName}.`;
-  }
-
-  // Navigate settings
-  if (lower === 'settings' || lower.includes('open settings') || lower.includes('configuration')) {
-    setTimeout(() => navigate('settings'), 300);
-    return `Opening configuration panel, ${State.userName}.`;
-  }
-
-  // New project
-  const newProjMatch = raw.match(/^(?:new|create|add)\s+project\s+(.+)$/i);
-  if (newProjMatch) {
-    const name = newProjMatch[1].trim();
-    const proj = await api('projects', 'POST', { name, status: 'active', description: '' });
-    playSuccessSound();
-    setTimeout(() => navigate('projects'), 500);
-    return fillTemplate(pickRandom(JARVIS_RESPONSES.project_created), { name, user: State.userName });
-  }
-
-  // New task
-  const newTaskMatch = raw.match(/^(?:new|create|add)\s+task\s+(.+)$/i);
-  if (newTaskMatch) {
-    const name = newTaskMatch[1].trim();
-    const projects = await api('projects');
-    const activeProj = projects && projects.find(p => p.status === 'active');
-    if (activeProj) {
-      await api('tasks', 'POST', { project_id: activeProj.id, name, status: 'todo' });
-      playSuccessSound();
-      return fillTemplate(pickRandom(JARVIS_RESPONSES.task_created), { name });
-    } else {
-      return `No active project found, ${State.userName}. Please create a project first.`;
+  // Cinematic VFX based on brain intent (only if action was taken OR it's a substantive intent)
+  if (window.CinematicVFX && !actionTaken) {
+    // Brain already triggers VFX during executeAction for actionTaken intents.
+    // For non-action intents, show a processing cinematic for longer responses.
+    if (responseText.length > 100 && ['casual_chat', 'status_check', 'help'].includes(intent)) {
+      CinematicVFX.processing('PROCESSING');
     }
   }
 
-  // Research
-  const researchMatch = raw.match(/^research\s+(.+)$/i);
-  if (researchMatch) {
-    const topic = researchMatch[1].trim();
-    await api('research', 'POST', { topic, content: '', tags: '' });
-    playSuccessSound();
-    setTimeout(() => navigate('research'), 300);
-    return fillTemplate(pickRandom(JARVIS_RESPONSES.research_saved), { topic, user: State.userName });
+  // Simulate processing delay (feels more intelligent)
+  const delay = 600 + Math.random() * 800;
+  await new Promise(r => setTimeout(r, delay));
+
+  if (typingEl) typingEl.remove();
+
+  // Save JARVIS response to backend
+  api('conversations', 'POST', { role: 'jarvis', content: responseText, topic: userInput.slice(0, 60) });
+
+  // Append to chat if visible
+  if (State.currentView === 'chat') {
+    const container = $('chat-messages');
+    const div = document.createElement('div');
+    div.className = 'chat-message jarvis';
+
+    // Build optional action tag (e.g., "PROJECT CREATED" / "MEMORY INDEXED")
+    let actionTag = '';
+    if (actionTaken) {
+      const tagLabels = {
+        create_project: 'PROJECT INITIALIZED',
+        save_memory: 'MEMORY INDEXED',
+        research: 'RESEARCH INITIATED',
+        create_task: 'TASK CREATED',
+        launch_operation: 'OPERATION QUEUED',
+        navigate: 'NAVIGATING',
+        status_check: 'DIAGNOSTICS RUN'
+      };
+      const label = tagLabels[intent] || 'ACTION EXECUTED';
+      actionTag = `<span class="chat-action-tag">${label}</span>`;
+    }
+
+    div.innerHTML = `
+      <div class="chat-avatar">J</div>
+      <div>
+        ${actionTag}
+        <div class="chat-bubble" id="jarvis-typing-bubble"></div>
+        <div class="chat-time">JARVIS — Just now</div>
+      </div>`;
+    container.appendChild(div);
+    container.scrollTop = container.scrollHeight;
+    const bubble = div.querySelector('#jarvis-typing-bubble');
+    if (bubble) await typewriterEffect(bubble, responseText);
   }
 
-  // Remember
-  const rememberMatch = raw.match(/^remember\s+(.+)$/i);
-  if (rememberMatch) {
-    const fact = rememberMatch[1].trim();
-    await api('memories', 'POST', { content: fact, category: 'general', tags: '' });
-    playSuccessSound();
-    return fillTemplate(pickRandom(JARVIS_RESPONSES.memory_saved), { user: State.userName });
-  }
+  // Speak the response
+  speakText(responseText);
 
-  // Unknown
-  return fillTemplate(pickRandom(JARVIS_RESPONSES.unknown));
+  // Update arc transcript
+  const transcript = $('arc-transcript');
+  if (transcript) {
+    transcript.textContent = responseText.slice(0, 80) + (responseText.length > 80 ? '...' : '');
+  }
 }
 
-// ══════════════════════════════════════════════════════════
-//  PROJECTS
-// ══════════════════════════════════════════════════════════
-async function loadProjects() {
-  const [projects, tasks] = await Promise.all([
-    api('projects'),
-    api('tasks'),
-  ]);
-
-  const container = $('projects-list');
-  if (!container) return;
-
-  if (!projects || projects.length === 0) {
-    container.innerHTML = `
-      <div style="text-align:center;padding:var(--sp-8);color:var(--text-faint);font-family:var(--font-mono);font-size:var(--text-sm)">
-        NO PROJECTS INITIALIZED<br>
-        <span style="font-size:var(--text-xs);opacity:0.6">Use voice command "new project [name]" or click +</span>
-      </div>`;
-    return;
+// ═══════════════════════════════════════════════════════
+//  VOICE SYSTEM
+// ═══════════════════════════════════════════════════════
+function initVoice() {
+  // Speech Synthesis — load voices
+  if ('speechSynthesis' in window) {
+    const loadVoices = () => {
+      State.availableVoices = window.speechSynthesis.getVoices();
+      // Fallback chain: Google UK Male → en-GB male → any en-GB → any en
+      const voice =
+        State.availableVoices.find(v => v.name === 'Google UK English Male') ||
+        State.availableVoices.find(v => v.lang === 'en-GB' && v.name.toLowerCase().includes('male')) ||
+        State.availableVoices.find(v => v.lang === 'en-GB') ||
+        State.availableVoices.find(v => v.lang.startsWith('en-GB')) ||
+        State.availableVoices.find(v => v.lang.startsWith('en'));
+      // Only override if user hasn't manually selected
+      if (!State.voiceSettings.voiceURI) State.selectedVoice = voice || null;
+      populateVoiceSelector();
+    };
+    loadVoices();
+    window.speechSynthesis.onvoiceschanged = loadVoices;
   }
 
-  container.innerHTML = projects.map(proj => {
-    const projTasks = (tasks || []).filter(t => t.project_id === proj.id);
-    const done = projTasks.filter(t => t.status === 'done' || t.status === 'complete').length;
-    const total = projTasks.length;
-    const pct = total > 0 ? Math.round((done / total) * 100) : 0;
-    const statusClass = proj.status === 'active' ? 'status-active' :
-                        proj.status === 'complete' ? 'status-complete' : 'status-paused';
-    return `
-      <div class="project-card" onclick="openProject(${proj.id})">
-        <div class="project-header">
-          <div>
-            <div class="project-name">${escHtml(proj.name)}</div>
-            <div class="project-meta">${formatDateTime(proj.created_at)}</div>
-          </div>
-          <span class="project-status ${statusClass}">${proj.status.toUpperCase()}</span>
-        </div>
-        ${proj.description ? `<div class="project-desc">${escHtml(proj.description)}</div>` : ''}
-        <div class="project-progress">
-          <div class="progress-bar"><div class="progress-fill" style="width:${pct}%"></div></div>
-          <div class="progress-text">${done}/${total} tasks • ${pct}%</div>
-        </div>
-      </div>`;
-  }).join('');
+  // Speech Recognition
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (SR) {
+    State.recognition = new SR();
+    State.recognition.continuous = false;
+    State.recognition.interimResults = true;
+    State.recognition.lang = 'en-GB';
+    State.recognition.maxAlternatives = 1;
+
+    State.recognition.onresult = (e) => {
+      const transcript = Array.from(e.results)
+        .map(r => r[0].transcript).join('');
+      const arcTranscript = $('arc-transcript');
+      if (arcTranscript) arcTranscript.textContent = transcript;
+      if (e.results[e.results.length - 1].isFinal) {
+        sendUserMessage(transcript);
+      }
+    };
+
+    State.recognition.onstart = () => {
+      State.isListening = true;
+      setArcState('listening');
+      playVoiceStartSound();
+      startAudioVisualization();
+    };
+
+    State.recognition.onend = () => {
+      State.isListening = false;
+      const micBtn = $('mic-btn');
+      const arc = $('arc-reactor');
+      if (micBtn) { micBtn.classList.remove('active'); micBtn.setAttribute('aria-pressed', 'false'); }
+      if (arc) arc.setAttribute('aria-pressed', 'false');
+      $('voice-status-item') && ($('voice-status-item').style.display = 'none');
+      stopAudioVisualization();
+      if (!State.isSpeaking) {
+        setArcState('idle');
+        // Continuous mode: restart listening immediately
+        if (State.continuousMode && !State.isSpeaking) {
+          setTimeout(() => {
+            if (!State.isListening && !State.isSpeaking) {
+              try { State.recognition.start(); } catch(e) {}
+            }
+          }, 800);
+        }
+        // Wake word mode: go back to listening for "Hey JARVIS"
+        else if (!State.continuousMode && !State.wakeWordActive) {
+          const wwToggle = $('setting-wakeword');
+          if (wwToggle && wwToggle.checked) {
+            setTimeout(() => startWakeWordDetection(), 500);
+          }
+        }
+      }
+    };
+
+    State.recognition.onerror = (e) => {
+      if (e.error !== 'no-speech' && e.error !== 'aborted') {
+        showToast(`Voice error: ${e.error}`, 2500);
+      }
+      State.isListening = false;
+      stopAudioVisualization();
+      setArcState('idle');
+    };
+  }
 }
 
-async function openProject(id) {
-  State.currentProjectId = id;
-  const [projects, tasks] = await Promise.all([
-    api('projects'),
-    api('tasks'),
-  ]);
-  const proj = projects && projects.find(p => p.id === id);
-  if (!proj) return;
+// ── Audio Visualization — real-time waveform around arc reactor ──
+function startAudioVisualization() {
+  if (State.audioVizActive) return;
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) return;
 
-  const modal = $('project-modal');
-  const title = $('modal-project-title');
-  const taskList = $('modal-task-list');
-  if (!modal) return;
+  navigator.mediaDevices.getUserMedia({ audio: true, video: false }).then(stream => {
+    if (!State.audioCtx) {
+      try { State.audioCtx = new (window.AudioContext || window.webkitAudioContext)(); } catch(e) { return; }
+    }
+    if (State.audioCtx.state === 'suspended') State.audioCtx.resume();
 
-  title.textContent = proj.name;
-  const projTasks = (tasks || []).filter(t => t.project_id === id);
+    State.micSource = State.audioCtx.createMediaStreamSource(stream);
+    State.analyser = State.audioCtx.createAnalyser();
+    State.analyser.fftSize = 256;
+    State.analyser.smoothingTimeConstant = 0.75;
+    State.micSource.connect(State.analyser);
+    State.audioVizActive = true;
 
-  if (projTasks.length === 0) {
-    taskList.innerHTML = '<div style="color:var(--text-faint);font-family:var(--font-mono);font-size:var(--text-xs)">No tasks yet. Add one above.</div>';
+    const arc = $('arc-reactor');
+    if (!arc) return;
+    const rect = arc.getBoundingClientRect();
+    const cv = $('audio-viz-canvas');
+    if (!cv) return;
+
+    const size = Math.max(rect.width, rect.height) + 120;
+    cv.width = size;
+    cv.height = size;
+    cv.style.width = size + 'px';
+    cv.style.height = size + 'px';
+    cv.style.left = (rect.left + rect.width / 2 - size / 2) + 'px';
+    cv.style.top = (rect.top + rect.height / 2 - size / 2) + 'px';
+    cv.style.position = 'fixed';
+    cv.classList.add('active');
+
+    const ctx2 = cv.getContext('2d');
+    const bufLen = State.analyser.frequencyBinCount;
+    const dataArr = new Uint8Array(bufLen);
+    const cx2 = size / 2, cy2 = size / 2;
+    const baseR = size / 2 - 18;
+
+    function drawViz() {
+      if (!State.audioVizActive) return;
+      State.analyser.getByteFrequencyData(dataArr);
+      ctx2.clearRect(0, 0, size, size);
+
+      const bars = 64;
+      for (let i = 0; i < bars; i++) {
+        const idx = Math.floor(i / bars * bufLen * 0.7);
+        const val = dataArr[idx] / 255;
+        const angle = (i / bars) * Math.PI * 2 - Math.PI / 2;
+        const r1 = baseR - 2;
+        const r2 = baseR + 4 + val * 28;
+        const alpha = 0.3 + val * 0.7;
+        ctx2.beginPath();
+        ctx2.moveTo(cx2 + Math.cos(angle) * r1, cy2 + Math.sin(angle) * r1);
+        ctx2.lineTo(cx2 + Math.cos(angle) * r2, cy2 + Math.sin(angle) * r2);
+        ctx2.strokeStyle = `rgba(0,212,255,${alpha})`;
+        ctx2.lineWidth = 2;
+        ctx2.stroke();
+      }
+      requestAnimationFrame(drawViz);
+    }
+    drawViz();
+
+    // Stop stream tracks when visualization stops
+    State._vizStream = stream;
+  }).catch(() => {
+    // Microphone not accessible for visualization — silent fail
+  });
+}
+
+function stopAudioVisualization() {
+  State.audioVizActive = false;
+  const cv = $('audio-viz-canvas');
+  if (cv) {
+    cv.classList.remove('active');
+    const ctx2 = cv.getContext('2d');
+    if (ctx2) ctx2.clearRect(0, 0, cv.width, cv.height);
+  }
+  if (State.micSource) { try { State.micSource.disconnect(); } catch(e) {} State.micSource = null; }
+  if (State._vizStream) {
+    State._vizStream.getTracks().forEach(t => t.stop());
+    State._vizStream = null;
+  }
+}
+
+// ── Wake Word Detection ──
+function startWakeWordDetection() {
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SR || State.wakeWordActive) return;
+
+  const wr = new SR();
+  wr.continuous = true;
+  wr.interimResults = true;
+  wr.lang = 'en-GB';
+  State.wakeRecognition = wr;
+  State.wakeWordActive = true;
+
+  const indicator = $('wake-word-indicator');
+  if (indicator) indicator.style.display = 'flex';
+
+  wr.onresult = (e) => {
+    const text = Array.from(e.results).map(r => r[0].transcript.toLowerCase()).join(' ');
+    if (text.includes('hey jarvis') || text.includes('jarvis')) {
+      wr.stop();
+      State.wakeWordActive = false;
+      if (indicator) indicator.style.display = 'none';
+      // Activate main listening
+      setTimeout(() => {
+        if (!State.isListening && !State.isSpeaking) {
+          toggleListening();
+          speakText('Yes, ' + State.userName + '?');
+        }
+      }, 200);
+    }
+  };
+  wr.onend = () => {
+    // Restart if still in wake word mode
+    if (State.wakeWordActive) {
+      setTimeout(() => { try { wr.start(); } catch(e) {} }, 500);
+    }
+  };
+  wr.onerror = (e) => {
+    if (e.error === 'aborted') return;
+    State.wakeWordActive = false;
+    if (indicator) indicator.style.display = 'none';
+  };
+
+  try { wr.start(); } catch(e) {}
+}
+
+function stopWakeWordDetection() {
+  State.wakeWordActive = false;
+  if (State.wakeRecognition) {
+    try { State.wakeRecognition.stop(); } catch(e) {}
+    State.wakeRecognition = null;
+  }
+  const indicator = $('wake-word-indicator');
+  if (indicator) indicator.style.display = 'none';
+}
+
+function setArcState(state) {
+  const arc = $('arc-reactor');
+  const label = $('arc-state-label');
+  const waveform = $('waveform');
+
+  if (!arc) return;
+  arc.classList.remove('listening', 'speaking');
+
+  if (state === 'listening') {
+    arc.classList.add('listening');
+    if (label) label.textContent = 'LISTENING — SPEAK YOUR COMMAND';
+    if (waveform) waveform.style.display = 'flex';
+  } else if (state === 'speaking') {
+    arc.classList.add('speaking');
+    if (label) label.textContent = 'JARVIS RESPONDING';
+    if (waveform) waveform.style.display = 'flex';
   } else {
-    taskList.innerHTML = projTasks.map(t => `
-      <div class="task-item ${t.status}" id="task-${t.id}">
-        <div class="task-checkbox" onclick="toggleTask(${t.id})"></div>
-        <div class="task-content">
-          <div class="task-name ${t.status === 'done' ? 'done' : ''}">${escHtml(t.name)}</div>
-          ${t.due_date ? `<div class="task-due">Due: ${formatDateTime(t.due_date)}</div>` : ''}
-        </div>
-        <button class="task-delete" onclick="deleteTask(${t.id})">×</button>
-      </div>
-    `).join('');
+    if (label) label.textContent = 'STANDBY — CLICK TO ACTIVATE VOICE';
+    if (waveform) waveform.style.display = 'none';
   }
-
-  modal.classList.add('active');
-  playClickSound();
 }
 
-async function addTask() {
-  const input = $('new-task-input');
-  if (!input || !State.currentProjectId) return;
-  const name = input.value.trim();
-  if (!name) return;
-  input.value = '';
-  await api('tasks', 'POST', { project_id: State.currentProjectId, name, status: 'todo' });
-  playSuccessSound();
-  showToast(`Task "${name}" added`);
-  openProject(State.currentProjectId);
+function toggleListening() {
+  if (!State.recognition) {
+    showToast('Voice recognition not available in this browser. Try Chrome.', 3000);
+    return;
+  }
+  if (State.isListening) {
+    State.recognition.abort();
+    State.isListening = false;
+    setArcState('idle');
+  } else {
+    try {
+      // Resume AudioContext if suspended (requires user gesture)
+      if (State.audioCtx && State.audioCtx.state === 'suspended') {
+        State.audioCtx.resume();
+      }
+      State.recognition.start();
+      $('voice-status-item') && ($('voice-status-item').style.display = 'flex');
+    } catch (e) {
+      showToast('Could not start microphone. Please allow microphone access.', 3000);
+    }
+  }
+  const micBtn = $('mic-btn');
+  const arc = $('arc-reactor');
+  if (micBtn) {
+    micBtn.classList.toggle('active', State.isListening);
+    micBtn.setAttribute('aria-pressed', String(State.isListening));
+  }
+  if (arc) arc.setAttribute('aria-pressed', String(State.isListening));
 }
 
-async function toggleTask(id) {
-  const tasks = await api('tasks');
-  const task = tasks && tasks.find(t => t.id === id);
-  if (!task) return;
-  const newStatus = task.status === 'done' ? 'todo' : 'done';
-  await api('tasks', 'PUT', { status: newStatus }, `id=${id}`);
-  playClickSound();
-  openProject(State.currentProjectId);
+// ── Speech Queue: JARVIS finishes one utterance before starting next ──
+function speakText(text) {
+  State.speechQueue.push(text);
+  if (!State.isSpeaking) _processSpeechQueue();
 }
 
-async function deleteTask(id) {
-  await api('tasks', 'DELETE', null, `id=${id}`);
-  playErrorSound();
-  openProject(State.currentProjectId);
-}
+function _processSpeechQueue() {
+  if (State.speechQueue.length === 0) return;
+  const text = State.speechQueue.shift();
 
-function closeModal() {
-  $$('.modal-overlay').forEach(m => m.classList.remove('active'));
-}
+  // Remove markdown-ish formatting for speech
+  const clean = text.replace(/[•▸\*\_`]/g, '').replace(/\n/g, '. ');
 
-async function createProject() {
-  const input = $('new-project-input');
-  if (!input) return;
-  const name = input.value.trim();
-  if (!name) return;
-  input.value = '';
-  await api('projects', 'POST', { name, status: 'active', description: '' });
-  playSuccessSound();
-  showToast(`Project "${name}" created`);
-  loadProjects();
-}
-
-async function updateProjectStatus(id, status) {
-  await api('projects', 'PUT', { status }, `id=${id}`);
-  loadProjects();
-  showToast(`Project status updated to ${status}`);
-}
-
-// ══════════════════════════════════════════════════════════
-//  OPERATIONS
-// ══════════════════════════════════════════════════════════
-async function loadOperations() {
-  const ops = await api('operations') || [];
-  const container = $('operations-list');
-  if (!container) return;
-
-  if (ops.length === 0) {
-    container.innerHTML = `
-      <div style="text-align:center;padding:var(--sp-8);color:var(--text-faint);font-family:var(--font-mono);font-size:var(--text-sm)">
-        NO ACTIVE OPERATIONS<br>
-        <span style="font-size:var(--text-xs);opacity:0.6">Operations will appear here when created</span>
-      </div>`;
+  // Route to ElevenLabs if enabled and configured
+  const elEnabled = State.elevenLabs.enabled && State.elevenLabs.apiKey && State.elevenLabs.voiceId;
+  console.log('[JARVIS TTS] enabled:', State.elevenLabs.enabled, 'apiKey:', !!State.elevenLabs.apiKey, 'voiceId:', !!State.elevenLabs.voiceId, '→ route:', elEnabled ? 'ElevenLabs' : 'BrowserTTS');
+  if (elEnabled) {
+    _speakElevenLabs(clean);
     return;
   }
 
-  container.innerHTML = ops.map(op => `
-    <div class="operation-item ${op.status}">
-      <div class="op-header">
-        <div class="op-name">${escHtml(op.name)}</div>
-        <div class="op-status-badge ${op.status}">${op.status.toUpperCase()}</div>
-      </div>
-      ${op.description ? `<div class="op-desc">${escHtml(op.description)}</div>` : ''}
-      <div class="op-progress-bar">
-        <div class="op-progress-fill" style="width:${op.progress}%"></div>
-      </div>
-      <div class="op-footer">
-        <span class="op-percent">${op.progress}%</span>
-        <span class="op-date">${formatDateTime(op.updated_at || op.created_at)}</span>
-      </div>
-    </div>
-  `).join('');
+  // Fallback: browser SpeechSynthesis
+  _speakBrowserTTS(clean);
 }
 
-async function createOperation() {
-  const nameInput = $('new-op-name');
-  const descInput = $('new-op-desc');
-  if (!nameInput) return;
-  const name = nameInput.value.trim();
-  if (!name) return;
-  const desc = descInput ? descInput.value.trim() : '';
-  nameInput.value = '';
-  if (descInput) descInput.value = '';
-  await api('operations', 'POST', { name, description: desc, status: 'active', progress: 0 });
-  playSuccessSound();
-  showToast(`Operation "${name}" created`);
-  loadOperations();
-}
+// ── ElevenLabs TTS Engine ──
+async function _speakElevenLabs(text) {
+  State.isSpeaking = true;
+  setArcState('speaking');
 
-// ══════════════════════════════════════════════════════════
-//  RESEARCH
-// ══════════════════════════════════════════════════════════
-async function loadResearch() {
-  const entries = await api('research') || [];
-  const container = $('research-list');
-  if (!container) return;
+  try {
+    const response = await fetch(
+      `https://api.elevenlabs.io/v1/text-to-speech/${State.elevenLabs.voiceId}/stream`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'xi-api-key': State.elevenLabs.apiKey,
+        },
+        body: JSON.stringify({
+          text: text,
+          model_id: State.elevenLabs.model,
+          voice_settings: {
+            stability: State.elevenLabs.stability,
+            similarity_boost: State.elevenLabs.similarityBoost,
+            style: State.elevenLabs.style,
+            use_speaker_boost: true,
+          },
+        }),
+      }
+    );
 
-  if (entries.length === 0) {
-    container.innerHTML = `
-      <div style="text-align:center;padding:var(--sp-8);color:var(--text-faint);font-family:var(--font-mono);font-size:var(--text-sm)">
-        KNOWLEDGE MATRIX EMPTY<br>
-        <span style="font-size:var(--text-xs);opacity:0.6">Use voice command "research [topic]" or add below</span>
-      </div>`;
-    return;
-  }
+    if (!response.ok) {
+      console.warn('ElevenLabs API error:', response.status, '— falling back to browser TTS');
+      _speakBrowserTTS(text);
+      return;
+    }
 
-  container.innerHTML = entries.map(e => `
-    <div class="research-card">
-      <div class="research-header">
-        <div class="research-topic">${escHtml(e.topic)}</div>
-        <div class="research-date">${formatDateTime(e.created_at)}</div>
-      </div>
-      ${e.content ? `<div class="research-content">${escHtml(e.content)}</div>` : ''}
-      ${e.tags ? `<div class="research-tags">${e.tags.split(',').map(t => `<span class="tag">${escHtml(t.trim())}</span>`).join('')}</div>` : ''}
-    </div>
-  `).join('');
-}
+    // Stream audio response
+    const audioBlob = await response.blob();
+    const audioUrl = URL.createObjectURL(audioBlob);
 
-async function addResearch() {
-  const topicInput = $('new-research-topic');
-  const contentInput = $('new-research-content');
-  if (!topicInput) return;
-  const topic = topicInput.value.trim();
-  if (!topic) return;
-  const content = contentInput ? contentInput.value.trim() : '';
-  topicInput.value = '';
-  if (contentInput) contentInput.value = '';
-  await api('research', 'POST', { topic, content, tags: '' });
-  playSuccessSound();
-  showToast(`Research "${topic}" saved`);
-  loadResearch();
-}
+    // Always create a fresh audio element for each TTS response
+    // (Reusing a primed element fails on mobile Safari after first use)
+    const audio = new Audio(audioUrl);
+    audio.volume = State.voiceSettings.volume;
+    State.elevenLabsAudio = audio;
 
-// ══════════════════════════════════════════════════════════
-//  SCHEDULE
-// ══════════════════════════════════════════════════════════
-async function loadSchedule() {
-  const tasks = await api('scheduled_tasks') || [];
-  const container = $('schedule-list');
-  if (!container) return;
-
-  if (tasks.length === 0) {
-    container.innerHTML = `
-      <div style="text-align:center;padding:var(--sp-8);color:var(--text-faint);font-family:var(--font-mono);font-size:var(--text-sm)">
-        SCHEDULE CLEAR<br>
-        <span style="font-size:var(--text-xs);opacity:0.6">No scheduled tasks</span>
-      </div>`;
-    return;
-  }
-
-  const sorted = [...tasks].sort((a, b) => new Date(a.due_at) - new Date(b.due_at));
-  container.innerHTML = sorted.map(t => {
-    const isPast = t.due_at && new Date(t.due_at) < new Date();
-    const statusClass = t.status === 'completed' ? 'status-complete' : isPast ? 'status-overdue' : 'status-active';
-    return `
-      <div class="schedule-item ${t.status}">
-        <div class="schedule-header">
-          <div class="schedule-title">${escHtml(t.title || t.name || '')}</div>
-          <span class="project-status ${statusClass}">${t.status ? t.status.toUpperCase() : 'PENDING'}</span>
-        </div>
-        ${t.description ? `<div class="schedule-desc">${escHtml(t.description)}</div>` : ''}
-        <div class="schedule-meta">
-          ${t.due_at ? `<span>Due: ${formatDateTime(t.due_at)}</span>` : ''}
-          ${t.recurrence ? `<span>Recurs: ${t.recurrence}</span>` : ''}
-        </div>
-      </div>`;
-  }).join('');
-}
-
-async function addScheduledTask() {
-  const titleInput = $('new-schedule-title');
-  const dateInput = $('new-schedule-date');
-  if (!titleInput) return;
-  const title = titleInput.value.trim();
-  if (!title) return;
-  const due_at = dateInput ? dateInput.value : '';
-  titleInput.value = '';
-  if (dateInput) dateInput.value = '';
-  await api('scheduled_tasks', 'POST', { title, due_at, status: 'pending', description: '' });
-  playSuccessSound();
-  showToast(`Task "${title}" scheduled`);
-  loadSchedule();
-}
-
-// ══════════════════════════════════════════════════════════
-//  MEMORY
-// ══════════════════════════════════════════════════════════
-async function loadMemory() {
-  const memories = await api('memories') || [];
-  const container = $('memory-list');
-  if (!container) return;
-
-  if (memories.length === 0) {
-    container.innerHTML = `
-      <div style="text-align:center;padding:var(--sp-8);color:var(--text-faint);font-family:var(--font-mono);font-size:var(--text-sm)">
-        MEMORY BANKS EMPTY<br>
-        <span style="font-size:var(--text-xs);opacity:0.6">Use "remember [fact]" to store information</span>
-      </div>`;
-    return;
-  }
-
-  container.innerHTML = memories.map(m => `
-    <div class="memory-card">
-      <div class="memory-content">${escHtml(m.content)}</div>
-      <div class="memory-meta">
-        ${m.category ? `<span class="memory-category">${escHtml(m.category)}</span>` : ''}
-        <span class="memory-date">${formatDateTime(m.created_at)}</span>
-      </div>
-    </div>
-  `).join('');
-}
-
-async function addMemory() {
-  const input = $('new-memory-input');
-  if (!input) return;
-  const content = input.value.trim();
-  if (!content) return;
-  input.value = '';
-  await api('memories', 'POST', { content, category: 'general', tags: '' });
-  playSuccessSound();
-  showToast('Memory indexed');
-  loadMemory();
-}
-
-// ══════════════════════════════════════════════════════════
-//  SETTINGS
-// ══════════════════════════════════════════════════════════
-async function loadSettings() {
-  const settings = await api('settings');
-
-  const fields = [
-    'user_name', 'voice_rate', 'voice_pitch', 'voice_volume',
-    'glow_intensity', 'animation_speed', 'theme',
-    'continuous_mode', 'wake_word',
-    'el_enabled', 'el_apikey', 'el_voiceid', 'el_model'
-  ];
-
-  fields.forEach(field => {
-    const el = $('setting-' + field.replace(/_/g, '-'));
-    if (el && settings[field] !== undefined) {
-      if (el.type === 'checkbox') {
-        el.checked = settings[field] === 'true' || settings[field] === true;
+    audio.onended = () => {
+      State.isSpeaking = false;
+      State.elevenLabsAudio = null;
+      URL.revokeObjectURL(audioUrl);
+      if (State.speechQueue.length > 0) {
+        _processSpeechQueue();
       } else {
-        el.value = settings[field];
+        if (!State.isListening) {
+          setArcState('idle');
+          // Continuous mode: auto-restart listening after JARVIS finishes speaking
+          if (State.continuousMode && State.recognition) {
+            setTimeout(() => {
+              if (!State.isListening && !State.isSpeaking) {
+                try { State.recognition.start(); } catch(e) {}
+              }
+            }, 800);
+          }
+          // Wake word: restart detection so user can say "Hey JARVIS" again
+          else if (!State.continuousMode && !State.wakeWordActive) {
+            const wwToggle = document.getElementById('setting-wakeword');
+            if (wwToggle && wwToggle.checked) {
+              setTimeout(() => startWakeWordDetection(), 500);
+            }
+          }
+        }
+      }
+    };
+
+    audio.onerror = (err) => {
+      console.warn('ElevenLabs audio playback error:', err);
+      State.isSpeaking = false;
+      State.elevenLabsAudio = null;
+      URL.revokeObjectURL(audioUrl);
+      if (!State.isListening) setArcState('idle');
+      if (State.speechQueue.length > 0) setTimeout(_processSpeechQueue, 200);
+    };
+
+    try {
+      await audio.play();
+    } catch (playErr) {
+      console.warn('Audio play blocked:', playErr);
+      // On mobile, autoplay may be blocked — try via the primed element
+      if (_elAudio) {
+        _elAudio.src = audioUrl;
+        _elAudio.volume = State.voiceSettings.volume;
+        State.elevenLabsAudio = _elAudio;
+        _elAudio.onended = audio.onended;
+        _elAudio.onerror = audio.onerror;
+        try { await _elAudio.play(); } catch(e2) {
+          console.warn('All audio play attempts failed, falling back to browser TTS');
+          _speakBrowserTTS(text);
+        }
+      } else {
+        console.warn('No primed audio element, falling back to browser TTS');
+        _speakBrowserTTS(text);
       }
     }
+  } catch (err) {
+    console.warn('ElevenLabs fetch error:', err, '— falling back to browser TTS');
+    _speakBrowserTTS(text);
+  }
+}
+
+// ── Browser SpeechSynthesis Fallback ──
+function _speakBrowserTTS(text) {
+  if (!State.synthesis) {
+    State.isSpeaking = false;
+    if (State.speechQueue.length > 0) _processSpeechQueue();
+    return;
+  }
+
+  const utt = new SpeechSynthesisUtterance(text);
+  if (State.selectedVoice) utt.voice = State.selectedVoice;
+  utt.rate = State.voiceSettings.rate;
+  utt.pitch = State.voiceSettings.pitch;
+  utt.volume = State.voiceSettings.volume;
+  utt.lang = 'en-GB';
+
+  utt.onstart = () => {
+    State.isSpeaking = true;
+    setArcState('speaking');
+  };
+  utt.onend = () => {
+    State.isSpeaking = false;
+    if (State.speechQueue.length > 0) {
+      _processSpeechQueue();
+    } else {
+      if (!State.isListening) {
+        setArcState('idle');
+        if (State.continuousMode && State.recognition) {
+          setTimeout(() => {
+            if (!State.isListening && !State.isSpeaking) {
+              try { State.recognition.start(); } catch(e) {}
+            }
+          }, 800);
+        }
+        else if (!State.continuousMode && !State.wakeWordActive) {
+          const wwToggle = document.getElementById('setting-wakeword');
+          if (wwToggle && wwToggle.checked) {
+            setTimeout(() => startWakeWordDetection(), 500);
+          }
+        }
+      }
+    }
+  };
+  utt.onerror = () => {
+    State.isSpeaking = false;
+    if (!State.isListening) setArcState('idle');
+    if (State.speechQueue.length > 0) setTimeout(_processSpeechQueue, 200);
+  };
+
+  State.synthesis.speak(utt);
+}
+
+// ── ElevenLabs Status & Test ──
+function _updateElStatusDot() {
+  const dot = $('el-status-dot');
+  if (!dot) return;
+  dot.className = 'el-status-dot';
+  if (State.elevenLabs.enabled && State.elevenLabs.apiKey && State.elevenLabs.voiceId) {
+    dot.classList.add('connected');
+  }
+}
+
+async function testElevenLabsVoice() {
+  const dot = $('el-status-dot');
+  const statusText = $('el-test-status');
+  if (dot) { dot.className = 'el-status-dot testing'; }
+  if (statusText) statusText.textContent = 'Testing connection...';
+
+  // Read current values from fields (even if not saved yet)
+  const apiKey = $('setting-el-apikey')?.value || State.elevenLabs.apiKey;
+  const voiceId = $('setting-el-voiceid')?.value || State.elevenLabs.voiceId;
+  const model = $('setting-el-model')?.value || State.elevenLabs.model;
+
+  if (!apiKey || !voiceId) {
+    if (dot) dot.className = 'el-status-dot error';
+    if (statusText) statusText.textContent = 'Missing API Key or Voice ID';
+    return;
+  }
+
+  try {
+    const response = await fetch(
+      `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}/stream`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'xi-api-key': apiKey },
+        body: JSON.stringify({
+          text: 'Systems online. All diagnostics nominal. At your service, Sir.',
+          model_id: model,
+          voice_settings: {
+            stability: parseFloat($('setting-el-stability')?.value || '0.5'),
+            similarity_boost: parseFloat($('setting-el-similarity')?.value || '0.75'),
+            style: parseFloat($('setting-el-style')?.value || '0.4'),
+            use_speaker_boost: true,
+          },
+        }),
+      }
+    );
+
+    if (!response.ok) {
+      const errText = await response.text();
+      console.warn('ElevenLabs test error:', response.status, errText);
+      if (dot) dot.className = 'el-status-dot error';
+      if (statusText) statusText.textContent = `Error ${response.status}: Check your API key and Voice ID`;
+      return;
+    }
+
+    const audioBlob = await response.blob();
+    const audioUrl = URL.createObjectURL(audioBlob);
+    const audio = new Audio(audioUrl);
+    audio.volume = State.voiceSettings.volume;
+    audio.onended = () => URL.revokeObjectURL(audioUrl);
+    await audio.play();
+
+    if (dot) dot.className = 'el-status-dot connected';
+    if (statusText) statusText.textContent = 'Connected — voice verified';
+  } catch (err) {
+    console.warn('ElevenLabs test fetch error:', err);
+    if (dot) dot.className = 'el-status-dot error';
+    if (statusText) statusText.textContent = 'Connection failed — check network or CORS';
+  }
+}
+
+function populateVoiceSelector() {
+  const sel = $('setting-voice');
+  if (!sel) return;
+  sel.innerHTML = '<option value="">Default (Auto-select British)</option>';
+  const voices = State.availableVoices.filter(v => v.lang.startsWith('en'));
+  voices.forEach(v => {
+    const opt = document.createElement('option');
+    opt.value = v.voiceURI;
+    opt.textContent = `${v.name} (${v.lang})`;
+    if (State.selectedVoice && v.voiceURI === State.selectedVoice.voiceURI) opt.selected = true;
+    sel.appendChild(opt);
+  });
+}
+
+// ═══════════════════════════════════════════════════════
+//  PROJECTS
+// ═══════════════════════════════════════════════════════
+async function loadProjects() {
+  const projects = await api('projects') || [];
+  const grid = $('projects-grid');
+  const detail = $('project-detail');
+  if (!grid) return;
+
+  // Hide detail, show grid
+  grid.closest('section').querySelector('div').style.display = 'block';
+  if (detail) detail.style.display = 'none';
+
+  if (projects.length === 0) {
+    grid.innerHTML = `
+      <div style="grid-column:1/-1;text-align:center;padding:var(--sp-16);color:var(--text-muted)">
+        <div style="font-family:var(--font-display);font-size:var(--text-lg);margin-bottom:var(--sp-3)">No active projects</div>
+        <div style="font-size:var(--text-sm)">Initialize a new project to begin operations.</div>
+      </div>`;
+    return;
+  }
+
+  grid.innerHTML = projects.map(p => {
+    const statusClass = p.status.toLowerCase();
+    return `
+      <div class="project-card" data-project-id="${p.id}" style="--project-color:${escHtml(p.color || '#00d4ff')}">
+        <div class="project-name">${escHtml(p.name)}</div>
+        <div class="project-status-badge ${statusClass}">
+          <span class="status-dot ${statusClass === 'active' ? '' : statusClass === 'paused' ? 'amber' : ''}"></span>
+          ${escHtml(p.status)}
+        </div>
+        <div style="font-size:var(--text-xs);color:var(--text-muted);margin-bottom:var(--sp-3)">${escHtml(p.description || 'No description')}</div>
+        <div class="progress-bar">
+          <div class="progress-fill" style="width:${p.progress || 0}%;background:${escHtml(p.color || '#00d4ff')}"></div>
+        </div>
+        <div style="display:flex;justify-content:space-between;margin-top:var(--sp-2)">
+          <span style="font-family:var(--font-mono);font-size:var(--text-xs);color:var(--text-faint)">${formatDateTime(p.created_at)}</span>
+          <span style="font-family:var(--font-mono);font-size:var(--text-xs);color:var(--text-cyan)">${p.progress || 0}%</span>
+        </div>
+      </div>`;
+  }).join('');
+
+  // Attach click handlers
+  grid.querySelectorAll('.project-card').forEach(card => {
+    card.addEventListener('click', () => {
+      const pid = parseInt(card.dataset.projectId);
+      openProjectDetail(pid);
+    });
+  });
+}
+
+async function openProjectDetail(projectId) {
+  State.currentProjectId = projectId;
+  const project = await api('projects', 'GET', null, `id=${projectId}`);
+  if (!project) return;
+
+  const grid = $('projects-grid');
+  const detail = $('project-detail');
+  const listView = $('view-projects').querySelector(':scope > div');
+
+  if (grid) grid.closest('div').style.display = 'none';
+  if (detail) detail.style.display = 'block';
+
+  const nameEl = $('project-detail-name');
+  const statusEl = $('project-detail-status');
+  if (nameEl) nameEl.textContent = project.name;
+  if (statusEl) {
+    statusEl.textContent = project.status;
+    statusEl.className = 'project-status-badge ' + project.status.toLowerCase();
+  }
+
+  renderKanban(projectId);
+}
+
+async function renderKanban(projectId) {
+  const tasks = await api('tasks', 'GET', null, `project_id=${projectId}`) || [];
+  const board = $('kanban-board');
+  if (!board) return;
+
+  const columns = {
+    todo: { label: 'To Do', tasks: [] },
+    inprogress: { label: 'In Progress', tasks: [] },
+    done: { label: 'Done', tasks: [] },
+  };
+
+  tasks.forEach(t => {
+    const col = t.status === 'todo' ? 'todo' : t.status === 'done' ? 'done' : 'inprogress';
+    columns[col].tasks.push(t);
   });
 
-  // Populate voice selector
-  const voiceSel = $('setting-voice-uri');
-  if (voiceSel && State.availableVoices.length > 0) {
-    voiceSel.innerHTML = '<option value="">-- System Default --</option>' +
-      State.availableVoices.map(v => `<option value="${v.voiceURI}" ${v.voiceURI === settings.voice_uri ? 'selected' : ''}>${escHtml(v.name)} (${v.lang})</option>`).join('');
+  board.innerHTML = Object.entries(columns).map(([colId, col]) => `
+    <div class="kanban-col" data-col="${colId}" id="col-${colId}">
+      <div class="kanban-col-header">
+        <span>${col.label}</span>
+        <span class="panel-badge">${col.tasks.length}</span>
+      </div>
+      <div class="kanban-tasks" id="tasks-${colId}">
+        ${col.tasks.map(t => renderTaskCard(t)).join('')}
+      </div>
+    </div>`).join('');
+
+  // Drag and drop
+  initKanbanDragDrop();
+}
+
+function renderTaskCard(task) {
+  const priorityColors = { low: '#475569', medium: '#00d4ff', high: '#f0a500', critical: '#ff3b5c' };
+  const color = priorityColors[task.priority] || '#00d4ff';
+  return `
+    <div class="task-card" draggable="true" data-task-id="${task.id}" data-status="${task.status}"
+         style="border-left:3px solid ${color}">
+      <div style="font-size:var(--text-sm);font-weight:500;color:var(--text-primary);margin-bottom:var(--sp-1)">${escHtml(task.title)}</div>
+      ${task.description ? `<div style="font-size:var(--text-xs);color:var(--text-muted)">${escHtml(task.description)}</div>` : ''}
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-top:var(--sp-2)">
+        <span style="font-family:var(--font-mono);font-size:var(--text-xs);color:${color};text-transform:uppercase">${task.priority}</span>
+        <button onclick="deleteTask(${task.id})" style="color:var(--text-faint);width:20px;height:20px;display:flex;align-items:center;justify-content:center;border-radius:3px;transition:color 0.12s" onmouseover="this.style.color='var(--accent-red)'" onmouseout="this.style.color='var(--text-faint)'" aria-label="Delete task">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+    </div>`;
+}
+
+window.deleteTask = async function(taskId) {
+  await api('tasks', 'DELETE', null, `id=${taskId}`);
+  renderKanban(State.currentProjectId);
+  playClickSound();
+};
+
+function initKanbanDragDrop() {
+  const cards = $$('.task-card');
+  const cols = $$('.kanban-col');
+
+  cards.forEach(card => {
+    card.addEventListener('dragstart', e => {
+      e.dataTransfer.setData('text/plain', card.dataset.taskId);
+      card.classList.add('dragging');
+    });
+    card.addEventListener('dragend', () => card.classList.remove('dragging'));
+  });
+
+  cols.forEach(col => {
+    col.addEventListener('dragover', e => {
+      e.preventDefault();
+      col.classList.add('drag-over');
+    });
+    col.addEventListener('dragleave', () => col.classList.remove('drag-over'));
+    col.addEventListener('drop', async e => {
+      e.preventDefault();
+      col.classList.remove('drag-over');
+      const taskId = e.dataTransfer.getData('text/plain');
+      const newStatus = col.dataset.col === 'inprogress' ? 'inprogress' : col.dataset.col;
+      await api('tasks', 'PUT', { id: taskId, status: newStatus }, `id=${taskId}`);
+      playSuccessSound();
+      renderKanban(State.currentProjectId);
+    });
+  });
+}
+
+// ═══════════════════════════════════════════════════════
+//  OPERATIONS
+// ═══════════════════════════════════════════════════════
+async function loadOperations() {
+  const ops = await api('operations') || [];
+  const list = $('operations-list');
+  if (!list) return;
+
+  if (ops.length === 0) {
+    list.innerHTML = `
+      <div style="text-align:center;padding:var(--sp-16);color:var(--text-muted)">
+        <div style="font-family:var(--font-display);font-size:var(--text-lg);margin-bottom:var(--sp-3)">No operations queued</div>
+        <div style="font-size:var(--text-sm)">Queue a new operation to begin processing.</div>
+      </div>`;
+    return;
+  }
+
+  list.innerHTML = ops.map(op => `
+    <div class="operation-item ${op.status}" id="op-item-${op.id}">
+      <div class="op-status-icon ${op.status}"></div>
+      <div style="flex:1">
+        <div class="op-name">${escHtml(op.name)}</div>
+        ${op.result ? `<div style="font-size:var(--text-xs);color:var(--text-muted);margin-top:2px">${escHtml(op.result)}</div>` : ''}
+      </div>
+      <div class="op-progress-bar"><div class="op-progress-fill" style="width:${op.progress}%"></div></div>
+      <div class="op-percent">${op.progress}%</div>
+      <span style="font-family:var(--font-mono);font-size:var(--text-xs);color:var(--text-faint);text-transform:uppercase;width:80px;text-align:right">${op.status}</span>
+    </div>`).join('');
+
+  // Simulate operation progress for queued/processing items
+  ops.filter(o => o.status === 'queued' || o.status === 'processing').forEach(op => {
+    simulateOperationProgress(op);
+  });
+}
+
+function simulateOperationProgress(op) {
+  if (op.status === 'queued') {
+    setTimeout(async () => {
+      if (window.CinematicVFX) CinematicVFX.operationLaunch(op.name);
+      await api('operations', 'PUT', { id: op.id, status: 'processing', progress: 5 }, `id=${op.id}`);
+      if (State.currentView === 'operations') loadOperations();
+      simulateOperationProgress({ ...op, status: 'processing', progress: 5 });
+    }, 2000 + Math.random() * 3000);
+    return;
+  }
+
+  let progress = op.progress || 5;
+  const interval = setInterval(async () => {
+    progress += 5 + Math.random() * 10;
+    if (progress >= 100) {
+      progress = 100;
+      clearInterval(interval);
+      await api('operations', 'PUT', { id: op.id, status: 'complete', progress: 100, result: 'Operation completed successfully' }, `id=${op.id}`);
+      speakText(fillTemplate(`Operation ${op.name} complete, ${State.userName}.`, {}));
+      showToast(`✓ Operation complete: ${op.name}`);
+      playSuccessSound();
+      if (State.currentView === 'operations' || State.currentView === 'dashboard') {
+        loadOperations();
+        loadDashboard();
+      }
+    } else {
+      await api('operations', 'PUT', { id: op.id, status: 'processing', progress: Math.floor(progress) }, `id=${op.id}`);
+      if (State.currentView === 'operations') loadOperations();
+    }
+  }, 1500 + Math.random() * 1000);
+}
+
+// ═══════════════════════════════════════════════════════
+//  SCHEDULED TASKS
+// ═══════════════════════════════════════════════════════
+async function loadSchedule() {
+  const tasks = await api('scheduled_tasks') || [];
+
+  // Update KPIs
+  const scheduled = tasks.filter(t => t.status === 'scheduled').length;
+  const inProgress = tasks.filter(t => t.status === 'in_progress').length;
+  const completed = tasks.filter(t => t.status === 'completed').length;
+  const delayed = tasks.filter(t => t.status === 'delayed').length;
+
+  animateCount($('kpi-scheduled'), scheduled);
+  animateCount($('kpi-in-progress'), inProgress);
+  animateCount($('kpi-completed-tasks'), completed);
+  animateCount($('kpi-delayed'), delayed);
+
+  const timeline = $('schedule-timeline');
+  if (!timeline) return;
+
+  if (tasks.length === 0) {
+    timeline.innerHTML = '<div style="color:var(--text-faint);font-family:var(--font-mono);font-size:var(--text-xs);text-align:center;padding:var(--sp-6)">No scheduled tasks yet. Ask JARVIS to schedule something via WhatsApp.</div>';
+    return;
+  }
+
+  timeline.innerHTML = tasks.map(t => {
+    const deadline = new Date(t.deadline);
+    const now = new Date();
+    const isOverdue = deadline < now && t.status !== 'completed';
+    const statusColors = {
+      'scheduled': 'var(--accent-cyan)',
+      'in_progress': 'var(--accent-amber, #f59e0b)',
+      'completed': 'var(--accent-green, #10b981)',
+      'delayed': 'var(--accent-red, #ef4444)',
+      'failed': 'var(--accent-red, #ef4444)'
+    };
+    const statusColor = statusColors[t.status] || 'var(--text-muted)';
+    const statusLabel = t.status.replace('_', ' ').toUpperCase();
+    const timeStr = deadline.toLocaleString('en-US', { month:'short', day:'numeric', hour:'2-digit', minute:'2-digit' });
+    const typeIcons = { report: '📊', app: '📱', research: '🔬', email: '📧', general: '⚡' };
+    const icon = typeIcons[t.type] || '📋';
+
+    return `
+      <div class="schedule-card ${t.status}${isOverdue ? ' overdue' : ''}" style="
+        border-left: 3px solid ${statusColor};
+        background: var(--bg-card);
+        border-radius: var(--radius-md);
+        padding: var(--sp-4);
+        margin-bottom: var(--sp-3);
+        position: relative;
+      ">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:var(--sp-3)">
+          <div style="flex:1">
+            <div style="display:flex;align-items:center;gap:var(--sp-2);margin-bottom:var(--sp-2)">
+              <span style="font-size:1.1rem">${icon}</span>
+              <span style="font-family:var(--font-mono);font-size:var(--text-sm);font-weight:600;color:var(--text-primary)">${escHtml(t.title)}</span>
+            </div>
+            ${t.description ? `<div style="font-size:var(--text-xs);color:var(--text-muted);margin-bottom:var(--sp-2)">${escHtml(t.description)}</div>` : ''}
+            <div style="display:flex;gap:var(--sp-3);flex-wrap:wrap;align-items:center">
+              <span style="font-family:var(--font-mono);font-size:var(--text-xs);color:var(--text-faint)">⏰ ${timeStr}</span>
+              <span style="font-family:var(--font-mono);font-size:10px;padding:2px 8px;border-radius:var(--radius-sm);background:${statusColor}22;color:${statusColor};border:1px solid ${statusColor}44">${statusLabel}</span>
+              ${t.priority === 'high' ? '<span style="font-family:var(--font-mono);font-size:10px;padding:2px 8px;border-radius:var(--radius-sm);background:#ef444422;color:#ef4444;border:1px solid #ef444444">HIGH</span>' : ''}
+            </div>
+            ${t.delay_reason ? `<div style="font-size:var(--text-xs);color:#ef4444;margin-top:var(--sp-2);font-style:italic">⚠ ${escHtml(t.delay_reason)}</div>` : ''}
+            ${t.result && t.status === 'completed' ? `<div style="font-size:var(--text-xs);color:var(--accent-green, #10b981);margin-top:var(--sp-2)">✓ ${escHtml(t.result.substring(0, 200))}</div>` : ''}
+          </div>
+          <div style="text-align:right;min-width:60px">
+            ${t.progress > 0 ? `
+              <div style="font-family:var(--font-mono);font-size:var(--text-lg);font-weight:700;color:${statusColor}">${t.progress}%</div>
+              <div style="width:60px;height:4px;background:var(--bg-dim);border-radius:2px;overflow:hidden;margin-top:var(--sp-1)">
+                <div style="width:${t.progress}%;height:100%;background:${statusColor};transition:width 0.5s ease"></div>
+              </div>
+            ` : ''}
+          </div>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+// ═══════════════════════════════════════════════════════
+//  RESEARCH
+// ═══════════════════════════════════════════════════════
+async function loadResearch() {
+  const entries = await api('research') || [];
+  const list = $('research-list');
+  if (!list) return;
+
+  if (entries.length === 0) {
+    list.innerHTML = `
+      <div style="text-align:center;padding:var(--sp-16);color:var(--text-muted)">
+        <div style="font-family:var(--font-display);font-size:var(--text-lg);margin-bottom:var(--sp-3)">No research entries</div>
+        <div style="font-size:var(--text-sm)">Initiate a new research operation to populate the knowledge matrix.</div>
+      </div>`;
+    return;
+  }
+
+  list.innerHTML = entries.map(e => {
+    let findings = [];
+    try { findings = JSON.parse(e.findings || '[]'); } catch {}
+    return `
+      <div class="research-card hud-panel">
+        <div style="padding:var(--sp-5)">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:var(--sp-3)">
+            <div class="research-topic">${escHtml(e.topic)}</div>
+            <span style="font-family:var(--font-mono);font-size:var(--text-xs);color:var(--text-faint)">${formatDateTime(e.created_at)}</span>
+          </div>
+          ${e.summary ? `<div style="font-size:var(--text-sm);color:var(--text-muted);margin-bottom:var(--sp-4);line-height:1.6">${escHtml(e.summary)}</div>` : ''}
+          ${findings.length > 0 ? `
+            <ul class="research-findings">
+              ${findings.map(f => `<li>${escHtml(f)}</li>`).join('')}
+            </ul>` : ''}
+          <div style="margin-top:var(--sp-4);display:flex;gap:var(--sp-3)">
+            <button class="btn btn-danger btn-icon" onclick="deleteResearch(${e.id})" aria-label="Delete research entry">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
+            </button>
+          </div>
+        </div>
+      </div>`;
+  }).join('');
+}
+
+window.deleteResearch = async function(id) {
+  await api('research', 'DELETE', null, `id=${id}`);
+  loadResearch();
+  playClickSound();
+};
+
+// ═══════════════════════════════════════════════════════
+//  MEMORY
+// ═══════════════════════════════════════════════════════
+async function loadMemory(searchQuery = '') {
+  const params = searchQuery ? `search=${encodeURIComponent(searchQuery)}` : '';
+  const memories = await api('memories', 'GET', null, params) || [];
+  const grid = $('memory-grid');
+  if (!grid) return;
+
+  if (memories.length === 0) {
+    grid.innerHTML = `
+      <div style="grid-column:1/-1;text-align:center;padding:var(--sp-16);color:var(--text-muted)">
+        <div style="font-family:var(--font-display);font-size:var(--text-lg);margin-bottom:var(--sp-3)">${searchQuery ? 'No memories match your search' : 'Memory banks empty'}</div>
+        <div style="font-size:var(--text-sm)">Start a conversation or save notes to populate memory banks.</div>
+      </div>`;
+    return;
+  }
+
+  grid.innerHTML = memories.map(m => {
+    let tags = [];
+    try { tags = JSON.parse(m.tags || '[]'); } catch {}
+    return `
+      <div class="memory-node">
+        <div class="memory-title">${escHtml(m.title)}</div>
+        <div class="memory-content">${escHtml(m.content)}</div>
+        ${tags.length ? `
+          <div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:var(--sp-3)">
+            ${tags.map(t => `<span style="font-family:var(--font-mono);font-size:10px;padding:2px 6px;border-radius:100px;background:rgba(0,212,255,0.08);color:var(--accent-cyan);border:1px solid rgba(0,212,255,0.2)">${escHtml(t)}</span>`).join('')}
+          </div>` : ''}
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-top:var(--sp-3)">
+          <span class="memory-date">${formatDateTime(m.created_at)}</span>
+          <button onclick="deleteMemory(${m.id})" style="color:var(--text-faint);width:20px;height:20px;display:flex;align-items:center;justify-content:center" aria-label="Delete memory">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </button>
+        </div>
+      </div>`;
+  }).join('');
+}
+
+window.deleteMemory = async function(id) {
+  await api('memories', 'DELETE', null, `id=${id}`);
+  loadMemory();
+  playClickSound();
+};
+
+// ═══════════════════════════════════════════════════════
+//  SETTINGS
+// ═══════════════════════════════════════════════════════
+async function loadSettings() {
+  const settings = await api('settings') || {};
+  if (settings.user_name) {
+    State.userName = settings.user_name;
+    const el = $('setting-username');
+    if (el) el.value = settings.user_name;
+  }
+  if (settings.voice_rate) {
+    State.voiceSettings.rate = parseFloat(settings.voice_rate);
+    const el = $('setting-voice-rate');
+    if (el) { el.value = settings.voice_rate; $('voice-rate-val').textContent = settings.voice_rate; }
+  }
+  if (settings.voice_pitch) {
+    State.voiceSettings.pitch = parseFloat(settings.voice_pitch);
+    const el = $('setting-voice-pitch');
+    if (el) { el.value = settings.voice_pitch; $('voice-pitch-val').textContent = settings.voice_pitch; }
+  }
+  if (settings.voice_volume) {
+    State.voiceSettings.volume = parseFloat(settings.voice_volume);
+    const el = $('setting-voice-volume');
+    if (el) { el.value = settings.voice_volume; $('voice-volume-val').textContent = settings.voice_volume; }
+  }
+  // ElevenLabs settings
+  if (settings.el_enabled !== undefined) {
+    State.elevenLabs.enabled = settings.el_enabled === 'true' || settings.el_enabled === true;
+    const el = $('setting-el-enabled');
+    if (el) el.checked = State.elevenLabs.enabled;
+  }
+  if (settings.el_apikey) {
+    State.elevenLabs.apiKey = settings.el_apikey;
+    const el = $('setting-el-apikey');
+    if (el) el.value = settings.el_apikey;
+  } else {
+    // Use default from State if not saved yet
+    const el = $('setting-el-apikey');
+    if (el && State.elevenLabs.apiKey) el.value = State.elevenLabs.apiKey;
+  }
+  if (settings.el_voiceid) {
+    State.elevenLabs.voiceId = settings.el_voiceid;
+    const el = $('setting-el-voiceid');
+    if (el) el.value = settings.el_voiceid;
+  } else {
+    const el = $('setting-el-voiceid');
+    if (el && State.elevenLabs.voiceId) el.value = State.elevenLabs.voiceId;
+  }
+  if (settings.el_model) {
+    State.elevenLabs.model = settings.el_model;
+    const el = $('setting-el-model');
+    if (el) el.value = settings.el_model;
+  }
+  if (settings.el_stability) {
+    State.elevenLabs.stability = parseFloat(settings.el_stability);
+    const el = $('setting-el-stability');
+    if (el) { el.value = settings.el_stability; const v = $('el-stability-val'); if (v) v.textContent = settings.el_stability; }
+  }
+  if (settings.el_similarity) {
+    State.elevenLabs.similarityBoost = parseFloat(settings.el_similarity);
+    const el = $('setting-el-similarity');
+    if (el) { el.value = settings.el_similarity; const v = $('el-similarity-val'); if (v) v.textContent = settings.el_similarity; }
+  }
+  if (settings.el_style) {
+    State.elevenLabs.style = parseFloat(settings.el_style);
+    const el = $('setting-el-style');
+    if (el) { el.value = settings.el_style; const v = $('el-style-val'); if (v) v.textContent = settings.el_style; }
+  }
+  // Update ElevenLabs status dot
+  _updateElStatusDot();
+  populateVoiceSelector();
+  updateGreeting();
+
+  // Continuous mode & wake word — load from settings and auto-enable
+  const cmEnabled = settings.continuous_mode === 'true' || settings.continuous_mode === true;
+  State.continuousMode = cmEnabled;
+  const cmToggle = $('setting-continuous');
+  if (cmToggle) cmToggle.checked = cmEnabled;
+
+  const wwEnabled = settings.wake_word === 'true' || settings.wake_word === true;
+  const wwToggle = $('setting-wakeword');
+  if (wwToggle) wwToggle.checked = wwEnabled;
+  // Auto-start wake word after boot if enabled
+  if (wwEnabled) {
+    setTimeout(() => startWakeWordDetection(), 1500);
   }
 }
 
 async function saveSettings() {
-  const fields = [
-    'user_name', 'voice_rate', 'voice_pitch', 'voice_volume',
-    'glow_intensity', 'animation_speed', 'theme',
-    'continuous_mode', 'wake_word',
-    'el_enabled', 'el_apikey', 'el_voiceid', 'el_model'
-  ];
-
-  const data = {};
-  fields.forEach(field => {
-    const el = $('setting-' + field.replace(/_/g, '-'));
-    if (el) {
-      data[field] = el.type === 'checkbox' ? String(el.checked) : el.value;
-    }
-  });
-
-  const voiceSel = $('setting-voice-uri');
-  if (voiceSel) data.voice_uri = voiceSel.value;
-
-  await api('settings', 'POST', data);
-  applySettings(data);
-  playSuccessSound();
-  showToast('Configuration saved, ' + State.userName + '.');
-}
-
-function applySettings(s) {
-  if (s.user_name) {
-    State.userName = s.user_name;
-    updateGreeting();
-  }
-  if (s.voice_rate) State.voiceSettings.rate = parseFloat(s.voice_rate);
-  if (s.voice_pitch) State.voiceSettings.pitch = parseFloat(s.voice_pitch);
-  if (s.voice_volume) State.voiceSettings.volume = parseFloat(s.voice_volume);
-  if (s.voice_uri) State.voiceSettings.voiceURI = s.voice_uri;
-  if (s.glow_intensity !== undefined) {
-    document.documentElement.style.setProperty('--glow-intensity', s.glow_intensity);
-  }
-  if (s.animation_speed !== undefined) {
-    document.documentElement.style.setProperty('--anim-speed', s.animation_speed);
-  }
-  if (s.theme) {
-    document.documentElement.setAttribute('data-theme', s.theme);
-  }
-  if (s.continuous_mode !== undefined) {
-    State.continuousMode = s.continuous_mode === 'true' || s.continuous_mode === true;
-  }
-  if (s.wake_word !== undefined) {
-    State.wakeWordActive = s.wake_word === 'true' || s.wake_word === true;
-    if (State.wakeWordActive && !State.wakeRecognition) {
-      startWakeWordListener();
-    } else if (!State.wakeWordActive && State.wakeRecognition) {
-      State.wakeRecognition.stop();
-      State.wakeRecognition = null;
-    }
-  }
-  // ElevenLabs settings
-  if (s.el_enabled !== undefined) {
-    State.elevenLabs.enabled = s.el_enabled === 'true' || s.el_enabled === true;
-  }
-  if (s.el_apikey) State.elevenLabs.apiKey = s.el_apikey;
-  if (s.el_voiceid) State.elevenLabs.voiceId = s.el_voiceid;
-  if (s.el_model) State.elevenLabs.model = s.el_model;
-}
-
-// ══════════════════════════════════════════════════════════
-//  VOICE ENGINE — Web Speech API + ElevenLabs TTS
-// ══════════════════════════════════════════════════════════
-
-// ── ElevenLabs TTS ────────────────────────────────────────────────────
-async function speakElevenLabs(text) {
-  const { apiKey, voiceId, model, stability, similarityBoost, style } = State.elevenLabs;
-  if (!apiKey || !voiceId) throw new Error('ElevenLabs not configured');
-
-  const url = `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}/stream`;
-  const body = {
-    text,
-    model_id: model,
-    voice_settings: { stability, similarity_boost: similarityBoost, style, use_speaker_boost: true },
+  const settings = {
+    user_name: $('setting-username')?.value || 'Sir',
+    voice_rate: parseFloat($('setting-voice-rate')?.value || '0.9'),
+    voice_pitch: parseFloat($('setting-voice-pitch')?.value || '1.0'),
+    voice_volume: parseFloat($('setting-voice-volume')?.value || '1.0'),
+    // ElevenLabs
+    el_enabled: $('setting-el-enabled')?.checked ? 'true' : 'false',
+    el_apikey: $('setting-el-apikey')?.value || '',
+    el_voiceid: $('setting-el-voiceid')?.value || '',
+    el_model: $('setting-el-model')?.value || 'eleven_multilingual_v2',
+    el_stability: parseFloat($('setting-el-stability')?.value || '0.5'),
+    el_similarity: parseFloat($('setting-el-similarity')?.value || '0.75'),
+    el_style: parseFloat($('setting-el-style')?.value || '0.4'),
+    // Voice modes
+    continuous_mode: $('setting-continuous')?.checked ? 'true' : 'false',
+    wake_word: $('setting-wakeword')?.checked ? 'true' : 'false',
   };
 
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'xi-api-key': apiKey,
-      'Content-Type': 'application/json',
-      'Accept': 'audio/mpeg',
-    },
-    body: JSON.stringify(body),
-  });
+  State.userName = settings.user_name;
+  State.voiceSettings.rate = settings.voice_rate;
+  State.voiceSettings.pitch = settings.voice_pitch;
+  State.voiceSettings.volume = settings.voice_volume;
 
-  if (!res.ok) throw new Error(`ElevenLabs API error: ${res.status}`);
+  // ElevenLabs state sync
+  State.elevenLabs.enabled = settings.el_enabled === 'true';
+  State.elevenLabs.apiKey = settings.el_apikey;
+  State.elevenLabs.voiceId = settings.el_voiceid;
+  State.elevenLabs.model = settings.el_model;
+  State.elevenLabs.stability = settings.el_stability;
+  State.elevenLabs.similarityBoost = settings.el_similarity;
+  State.elevenLabs.style = settings.el_style;
 
-  const blob = await res.blob();
-  const audioUrl = URL.createObjectURL(blob);
-
-  // Stop any currently playing ElevenLabs audio
-  if (State.elevenLabsAudio) {
-    State.elevenLabsAudio.pause();
-    State.elevenLabsAudio.src = '';
+  // Voice selection
+  const voiceSel = $('setting-voice');
+  if (voiceSel && voiceSel.value) {
+    const v = State.availableVoices.find(v => v.voiceURI === voiceSel.value);
+    if (v) State.selectedVoice = v;
   }
 
-  const audio = _elAudio || new Audio();
-  audio.src = audioUrl;
-  State.elevenLabsAudio = audio;
+  // Sync voice selection URI into settings for persistence check
+  const voiceSelSave = $('setting-voice');
+  if (voiceSelSave && voiceSelSave.value) {
+    const v = State.availableVoices.find(v => v.voiceURI === voiceSelSave.value);
+    if (v) { State.selectedVoice = v; State.voiceSettings.voiceURI = v.voiceURI; }
+  }
 
-  return new Promise((resolve, reject) => {
-    audio.onended = () => { URL.revokeObjectURL(audioUrl); resolve(); };
-    audio.onerror = reject;
-    audio.play().catch(reject);
+  await api('settings', 'POST', settings);
+  _updateElStatusDot();
+  updateGreeting();
+  playSuccessSound();
+  showToast('Configuration saved, ' + settings.user_name + '.');
+}
+
+// ═══════════════════════════════════════════════════════
+//  MODALS
+// ═══════════════════════════════════════════════════════
+function openModal(id) {
+  const modal = $(id);
+  if (!modal) return;
+  modal.classList.remove('hidden');
+  playClickSound();
+  // Focus first input
+  setTimeout(() => {
+    const input = modal.querySelector('input, textarea, select');
+    if (input) input.focus();
+  }, 50);
+}
+
+function closeModal(id) {
+  const modal = $(id);
+  if (modal) modal.classList.add('hidden');
+}
+
+// ═══════════════════════════════════════════════════════
+//  EVENT LISTENERS
+// ═══════════════════════════════════════════════════════
+function bindEvents() {
+  // Unlock audio on first user interaction (for ElevenLabs TTS autoplay)
+  document.addEventListener('click', _unlockAudio, { once: true });
+  document.addEventListener('touchstart', _unlockAudio, { once: true });
+
+  // Navigation (sidebar + bottom bar)
+  $$('[data-view]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const view = btn.dataset.view;
+      if (view) navigate(view);
+    });
+  });
+
+  // Arc reactor click / keyboard
+  const arc = $('arc-reactor');
+  if (arc) {
+    arc.addEventListener('click', (e) => {
+      if (e.target.closest('.arc-mic-btn')) return; // mic btn handles itself
+      toggleListening();
+    });
+    arc.addEventListener('keydown', e => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleListening(); }
+    });
+  }
+
+  // Mic buttons
+  const micBtn = $('mic-btn');
+  if (micBtn) {
+    micBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      toggleListening();
+    });
+  }
+  const chatMicBtn = $('chat-mic-btn');
+  if (chatMicBtn) chatMicBtn.addEventListener('click', toggleListening);
+
+  // Chat input
+  const chatInput = $('chat-input');
+  const chatSend = $('chat-send');
+  if (chatInput) {
+    chatInput.addEventListener('keydown', e => {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        const val = chatInput.value.trim();
+        if (val) { chatInput.value = ''; sendUserMessage(val); }
+      }
+    });
+  }
+  if (chatSend) {
+    chatSend.addEventListener('click', () => {
+      const val = chatInput?.value.trim();
+      if (val) { chatInput.value = ''; sendUserMessage(val); }
+    });
+  }
+
+  // New project
+  const newProjBtn = $('new-project-btn');
+  const quickProjBtn = $('quick-project-btn');
+  if (newProjBtn) newProjBtn.addEventListener('click', () => openModal('modal-new-project'));
+  if (quickProjBtn) quickProjBtn.addEventListener('click', () => { navigate('projects'); setTimeout(() => openModal('modal-new-project'), 200); });
+
+  const saveProjBtn = $('save-project-btn');
+  if (saveProjBtn) {
+    saveProjBtn.addEventListener('click', async () => {
+      const name = $('proj-name')?.value.trim();
+      if (!name) { showToast('Please enter a project name.'); return; }
+      const p = await api('projects', 'POST', {
+        name,
+        status: $('proj-status')?.value || 'Active',
+        description: $('proj-desc')?.value || '',
+      });
+      closeModal('modal-new-project');
+      $('proj-name').value = ''; $('proj-desc').value = '';
+      if (p) {
+        if (window.CinematicVFX) CinematicVFX.projectInit(p.name);
+        playSuccessSound();
+        showToast(`Project "${p.name}" initialized.`);
+        loadProjects();
+        loadDashboard();
+        speakText(fillTemplate(pickRandom(JARVIS_RESPONSES.project_created), { name: p.name, user: State.userName }));
+      }
+    });
+  }
+
+  // Back to projects list
+  const backBtn = $('back-to-projects');
+  if (backBtn) {
+    backBtn.addEventListener('click', () => {
+      const detail = $('project-detail');
+      const grid = $('projects-grid');
+      if (detail) detail.style.display = 'none';
+      const listDiv = $('view-projects').querySelector(':scope > div');
+      if (listDiv) listDiv.style.display = 'block';
+      State.currentProjectId = null;
+    });
+  }
+
+  // Add task
+  const addTaskBtn = $('add-task-btn');
+  if (addTaskBtn) addTaskBtn.addEventListener('click', () => openModal('modal-new-task'));
+
+  const saveTaskBtn = $('save-task-btn');
+  if (saveTaskBtn) {
+    saveTaskBtn.addEventListener('click', async () => {
+      const title = $('task-title')?.value.trim();
+      if (!title) { showToast('Please enter a task title.'); return; }
+      const t = await api('tasks', 'POST', {
+        title,
+        description: $('task-desc')?.value || '',
+        priority: $('task-priority')?.value || 'medium',
+        project_id: State.currentProjectId,
+        status: 'todo',
+      });
+      closeModal('modal-new-task');
+      $('task-title').value = ''; $('task-desc').value = '';
+      if (t) {
+        playSuccessSound();
+        showToast(`Task "${t.title}" created.`);
+        renderKanban(State.currentProjectId);
+      }
+    });
+  }
+
+  // New research
+  const newResBtn = $('new-research-btn');
+  const quickResBtn = $('quick-research-btn');
+  if (newResBtn) newResBtn.addEventListener('click', () => openModal('modal-new-research'));
+  if (quickResBtn) quickResBtn.addEventListener('click', () => { navigate('research'); setTimeout(() => openModal('modal-new-research'), 200); });
+
+  const saveResBtn = $('save-research-btn');
+  if (saveResBtn) {
+    saveResBtn.addEventListener('click', async () => {
+      const topic = $('research-topic')?.value.trim();
+      if (!topic) { showToast('Please enter a research topic.'); return; }
+      const findingsRaw = $('research-findings')?.value || '';
+      const findings = findingsRaw.split('\n').map(l => l.trim()).filter(Boolean);
+      const r = await api('research', 'POST', {
+        topic,
+        summary: $('research-summary')?.value || '',
+        findings,
+      });
+      closeModal('modal-new-research');
+      $('research-topic').value = ''; $('research-summary').value = ''; $('research-findings').value = '';
+      if (r) {
+        if (window.CinematicVFX) CinematicVFX.researchAnalysis(r.topic);
+        playSuccessSound();
+        showToast(`Research "${r.topic}" logged.`);
+        loadResearch();
+        speakText(fillTemplate(pickRandom(JARVIS_RESPONSES.research_saved), { topic: r.topic }));
+      }
+    });
+  }
+
+  // New memory
+  const newMemBtn = $('new-memory-btn');
+  const quickMemBtn = $('quick-memory-btn');
+  if (newMemBtn) newMemBtn.addEventListener('click', () => openModal('modal-new-memory'));
+  if (quickMemBtn) quickMemBtn.addEventListener('click', () => { navigate('memory'); setTimeout(() => openModal('modal-new-memory'), 200); });
+
+  const saveMemBtn = $('save-memory-btn');
+  if (saveMemBtn) {
+    saveMemBtn.addEventListener('click', async () => {
+      const title = $('mem-title')?.value.trim();
+      const content = $('mem-content')?.value.trim();
+      if (!title || !content) { showToast('Please fill in title and content.'); return; }
+      const tagsRaw = $('mem-tags')?.value || '';
+      const tags = tagsRaw.split(',').map(t => t.trim()).filter(Boolean);
+      const m = await api('memories', 'POST', { title, content, tags });
+      closeModal('modal-new-memory');
+      $('mem-title').value = ''; $('mem-content').value = ''; $('mem-tags').value = '';
+      if (m) {
+        if (window.CinematicVFX) CinematicVFX.memoryIndex();
+        playSuccessSound();
+        showToast('Memory indexed.');
+        loadMemory();
+        if (State.currentView === 'dashboard') loadDashboard();
+        speakText(fillTemplate(pickRandom(JARVIS_RESPONSES.memory_saved), {}));
+      }
+    });
+  }
+
+  // New operation
+  const newOpBtn = $('new-operation-btn');
+  if (newOpBtn) newOpBtn.addEventListener('click', () => openModal('modal-new-operation'));
+
+  const saveOpBtn = $('save-operation-btn');
+  if (saveOpBtn) {
+    saveOpBtn.addEventListener('click', async () => {
+      const name = $('op-name')?.value.trim();
+      if (!name) { showToast('Please enter an operation name.'); return; }
+      const op = await api('operations', 'POST', { name, status: 'queued', progress: 0 });
+      closeModal('modal-new-operation');
+      $('op-name').value = '';
+      if (op) {
+        if (window.CinematicVFX) CinematicVFX.operationLaunch(op.name);
+        playSuccessSound();
+        showToast(`Operation "${op.name}" queued.`);
+        loadOperations();
+        speakText(`Operation ${op.name} queued for processing, ${State.userName}.`);
+      }
+    });
+  }
+
+  // Modal close buttons
+  $$('[data-close-modal]').forEach(btn => {
+    btn.addEventListener('click', () => closeModal(btn.dataset.closeModal));
+  });
+
+  // Click outside modal to close
+  $$('.modal-backdrop').forEach(modal => {
+    modal.addEventListener('click', e => {
+      if (e.target === modal) closeModal(modal.id);
+    });
+  });
+
+  // Escape key to close modals
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') {
+      $$('.modal-backdrop:not(.hidden)').forEach(m => closeModal(m.id));
+    }
+  });
+
+  // Settings sliders
+  const sliders = [
+    ['setting-voice-rate', 'voice-rate-val'],
+    ['setting-voice-pitch', 'voice-pitch-val'],
+    ['setting-voice-volume', 'voice-volume-val'],
+    ['setting-glow', 'glow-val'],
+    ['setting-anim', 'anim-val'],
+  ];
+  sliders.forEach(([sliderId, valId]) => {
+    const el = $(sliderId);
+    if (el) el.addEventListener('input', () => {
+      const valEl = $(valId);
+      if (valEl) valEl.textContent = el.value;
+    });
+  });
+
+  // Save settings
+  const saveSettingsBtn = $('save-settings-btn');
+  if (saveSettingsBtn) saveSettingsBtn.addEventListener('click', saveSettings);
+
+  // Test Voice button
+  const testVoiceBtn = $('test-voice-btn');
+  if (testVoiceBtn) {
+    testVoiceBtn.addEventListener('click', () => {
+      speakText(`Online and fully operational, ${State.userName}. All systems nominal. Voice calibration complete.`);
+    });
+  }
+
+  // ElevenLabs Test Voice button
+  const testElBtn = $('test-el-voice-btn');
+  if (testElBtn) testElBtn.addEventListener('click', testElevenLabsVoice);
+
+  // ElevenLabs range slider labels
+  ['setting-el-stability', 'setting-el-similarity', 'setting-el-style'].forEach(id => {
+    const el = $(id);
+    if (el) {
+      const valId = id.replace('setting-el-', 'el-') + '-val';
+      el.addEventListener('input', () => {
+        const valEl = $(valId);
+        if (valEl) valEl.textContent = el.value;
+      });
+    }
+  });
+
+  // ElevenLabs enable toggle — update status dot live
+  const elToggle = $('setting-el-enabled');
+  if (elToggle) {
+    elToggle.addEventListener('change', () => {
+      State.elevenLabs.enabled = elToggle.checked;
+      _updateElStatusDot();
+    });
+  }
+
+  // Continuous mode toggle
+  const continuousToggle = $('setting-continuous');
+  if (continuousToggle) {
+    continuousToggle.addEventListener('change', () => {
+      State.continuousMode = continuousToggle.checked;
+      if (State.continuousMode) {
+        showToast('Continuous conversation mode enabled.');
+      } else {
+        showToast('Continuous mode disabled.');
+      }
+    });
+  }
+
+  // Wake word toggle
+  const wakeWordToggle = $('setting-wakeword');
+  if (wakeWordToggle) {
+    wakeWordToggle.addEventListener('change', () => {
+      if (wakeWordToggle.checked) {
+        startWakeWordDetection();
+        showToast('Wake word detection active. Say "Hey JARVIS" to activate.');
+      } else {
+        stopWakeWordDetection();
+        showToast('Wake word detection disabled.');
+      }
+    });
+  }
+
+  // Export memories
+  const exportBtn = $('export-memories-btn');
+  if (exportBtn) {
+    exportBtn.addEventListener('click', async () => {
+      const memories = await api('memories') || [];
+      const blob = new Blob([JSON.stringify(memories, null, 2)], { type: 'application/json' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = 'jarvis-memories.json';
+      a.click();
+      showToast('Memory banks exported.');
+    });
+  }
+
+  // Clear conversations
+  const clearConvosBtn = $('clear-convos-btn');
+  if (clearConvosBtn) {
+    clearConvosBtn.addEventListener('click', async () => {
+      if (!confirm('Clear all conversation history?')) return;
+      await api('conversations', 'DELETE');
+      showToast('Conversation history cleared.');
+      playClickSound();
+    });
+  }
+
+  // Clear memories
+  const clearMemBtn = $('clear-memories-btn');
+  if (clearMemBtn) {
+    clearMemBtn.addEventListener('click', async () => {
+      if (!confirm('Purge all memory banks? This cannot be undone.')) return;
+      await api('memories', 'DELETE');
+      showToast('Memory banks purged.');
+      loadMemory();
+      loadDashboard();
+      playErrorSound();
+    });
+  }
+
+  // Memory search
+  const memSearch = $('memory-search');
+  if (memSearch) {
+    let debounce;
+    memSearch.addEventListener('input', () => {
+      clearTimeout(debounce);
+      debounce = setTimeout(() => loadMemory(memSearch.value), 300);
+    });
+  }
+
+  // Mobile nav bottom bar
+  const isMobile = () => window.innerWidth <= 600;
+  function updateBottomBar() {
+    $$('.mobile-nav-btn').forEach(b => b.style.display = isMobile() ? 'flex' : 'none');
+    $$('.mobile-nav-btn').forEach(b => { if (!isMobile()) b.style.display = 'none'; });
+    const qp = $('quick-project-btn');
+    const qr = $('quick-research-btn');
+    const qm = $('quick-memory-btn');
+    if (!isMobile()) {
+      [qp, qr, qm].forEach(el => { if (el) el.style.display = 'inline-flex'; });
+    } else {
+      [qp, qr, qm].forEach(el => { if (el) el.style.display = 'none'; });
+    }
+  }
+  updateBottomBar();
+  window.addEventListener('resize', updateBottomBar);
+
+  // Handle hash routing
+  window.addEventListener('hashchange', () => {
+    const hash = window.location.hash.replace('#', '');
+    if (hash) navigate(hash);
   });
 }
 
-// ── Main speak function ───────────────────────────────────────────────
-function speak(text) {
-  if (!text) return;
-  State.speechQueue.push(text);
-  if (!State.isSpeaking) _processQueue();
+// ═══════════════════════════════════════════════════════
+//  PIN LOCK SYSTEM (Native Input — works in iOS standalone PWA)
+// ═══════════════════════════════════════════════════════
+const PIN_STORAGE_KEY = 'jarvis_pin_hash';
+const PIN_SESSION_KEY = 'jarvis_authenticated';
+const PIN_MIN_LENGTH = 4;
+const PIN_MAX_LENGTH = 6;
+const PIN_MAX_ATTEMPTS = 5;
+const PIN_LOCKOUT_MS = 30000;
+
+let _pinAttempts = 0;
+let _pinLocked = false;
+let _pinMode = 'verify';
+let _pinSetupFirst = '';
+
+async function _hashPin(pin) {
+  const encoder = new TextEncoder();
+  const data = encoder.encode('jarvis_salt_' + pin);
+  const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+  return Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, '0')).join('');
 }
 
-async function _processQueue() {
-  if (State.speechQueue.length === 0) { State.isSpeaking = false; return; }
-  State.isSpeaking = true;
-  const text = State.speechQueue.shift();
-  updateVoiceUI(true);
+async function _initPinSystem() {
+  const overlay = document.getElementById('pin-overlay');
+  if (!overlay) return _startBoot();
+
+  if (_memCache[PIN_SESSION_KEY] === 'true') {
+    overlay.classList.add('hidden');
+    return _startBoot();
+  }
 
   try {
-    if (State.elevenLabs.enabled && State.elevenLabs.apiKey) {
-      await speakElevenLabs(text);
-    } else {
-      await _webSpeechSpeak(text);
+    const settings = await api('settings');
+    if (settings && settings.pin_hash) {
+      _memCache[PIN_STORAGE_KEY] = settings.pin_hash;
     }
-  } catch (err) {
-    console.warn('TTS error:', err);
-    // Fallback to Web Speech
-    try { await _webSpeechSpeak(text); } catch(e) {}
-  }
+  } catch(e) {}
 
-  updateVoiceUI(false);
-  _processQueue();
-}
+  const storedHash = _memCache[PIN_STORAGE_KEY];
+  const pinInput = document.getElementById('pin-input');
+  const submitBtn = document.getElementById('pin-submit-btn');
 
-function _webSpeechSpeak(text) {
-  return new Promise((resolve) => {
-    if (!State.synthesis) { resolve(); return; }
-    State.synthesis.cancel();
-    const utt = new SpeechSynthesisUtterance(text);
-    utt.rate = State.voiceSettings.rate;
-    utt.pitch = State.voiceSettings.pitch;
-    utt.volume = State.voiceSettings.volume;
-    if (State.selectedVoice) utt.voice = State.selectedVoice;
-    utt.onend = resolve;
-    utt.onerror = resolve;
-    State.synthesis.speak(utt);
-  });
-}
-
-function stopSpeaking() {
-  State.speechQueue = [];
-  if (State.synthesis) State.synthesis.cancel();
-  if (State.elevenLabsAudio) {
-    State.elevenLabsAudio.pause();
-    State.elevenLabsAudio.src = '';
-  }
-  State.isSpeaking = false;
-  updateVoiceUI(false);
-}
-
-function loadVoices() {
-  const voices = State.synthesis ? State.synthesis.getVoices() : [];
-  State.availableVoices = voices;
-  if (State.voiceSettings.voiceURI) {
-    State.selectedVoice = voices.find(v => v.voiceURI === State.voiceSettings.voiceURI) || null;
-  }
-}
-
-// ── Voice input (STT) ─────────────────────────────────────────────────
-function initVoiceRecognition() {
-  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-  if (!SpeechRecognition) return;
-
-  State.recognition = new SpeechRecognition();
-  State.recognition.continuous = false;
-  State.recognition.interimResults = true;
-  State.recognition.lang = 'en-US';
-
-  State.recognition.onresult = (event) => {
-    const transcript = Array.from(event.results)
-      .map(r => r[0].transcript)
-      .join('');
-    const input = $('chat-input') || $('voice-input-display');
-    if (input) input.value = transcript;
-
-    // Auto-submit on final result
-    if (event.results[event.results.length - 1].isFinal) {
-      const chatInput = $('chat-input');
-      if (chatInput) {
-        chatInput.value = transcript;
-        setTimeout(() => sendMessage(chatInput), 300);
-      }
-    }
-  };
-
-  State.recognition.onerror = (event) => {
-    if (event.error !== 'no-speech') {
-      console.warn('Speech recognition error:', event.error);
-      showToast(`Voice error: ${event.error}`);
-    }
-    setListeningState(false);
-  };
-
-  State.recognition.onend = () => {
-    if (State.continuousMode && State.isListening) {
-      setTimeout(() => {
-        if (State.isListening) State.recognition.start();
-      }, 200);
-    } else {
-      setListeningState(false);
-    }
-  };
-}
-
-function toggleVoice() {
-  _unlockAudio();
-  if (State.isListening) {
-    stopListening();
+  if (!storedHash) {
+    _pinMode = 'setup';
+    document.getElementById('pin-title').textContent = 'CREATE ACCESS CODE';
+    document.getElementById('pin-subtitle').textContent = 'Set a 4-6 digit code to secure JARVIS';
+    if (submitBtn) submitBtn.textContent = 'SET CODE';
   } else {
-    startListening();
+    _pinMode = 'verify';
+    document.getElementById('pin-title').textContent = 'ENTER ACCESS CODE';
+    document.getElementById('pin-subtitle').textContent = 'Identity verification required';
+    if (submitBtn) submitBtn.textContent = 'VERIFY';
+  }
+
+  // Focus input on tap anywhere on overlay
+  overlay.addEventListener('click', (e) => {
+    if (!e.target.closest('.pin-submit-btn') && !e.target.closest('.pin-native-input')) {
+      pinInput.focus();
+    }
+  });
+
+  // Filter non-numeric input
+  pinInput.addEventListener('input', () => {
+    pinInput.value = pinInput.value.replace(/[^0-9]/g, '').slice(0, PIN_MAX_LENGTH);
+    _clearPinError();
+    if (pinInput.value.length === PIN_MAX_LENGTH) {
+      setTimeout(() => _submitPin(), 150);
+    }
+  });
+
+  // Submit on Enter
+  pinInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); _submitPin(); }
+  });
+
+  // Submit button
+  if (submitBtn) {
+    submitBtn.addEventListener('click', (e) => { e.preventDefault(); _submitPin(); });
+  }
+
+  // Auto-focus after delay (helps iOS standalone)
+  setTimeout(() => { try { pinInput.focus(); } catch(e){} }, 500);
+}
+
+function _showPinError(msg) {
+  const el = document.getElementById('pin-error');
+  if (el) el.textContent = msg;
+  const pinInput = document.getElementById('pin-input');
+  if (pinInput) {
+    pinInput.classList.add('error');
+    setTimeout(() => pinInput.classList.remove('error'), 600);
   }
 }
 
-function startListening() {
-  if (!State.recognition) {
-    showToast('Voice recognition not available in this browser.');
+function _clearPinError() {
+  const el = document.getElementById('pin-error');
+  if (el) el.textContent = '';
+}
+
+async function _submitPin() {
+  const pinInput = document.getElementById('pin-input');
+  const pin = pinInput ? pinInput.value.trim() : '';
+
+  if (pin.length < PIN_MIN_LENGTH) {
+    _showPinError('Minimum ' + PIN_MIN_LENGTH + ' digits required');
     return;
   }
-  try {
-    State.recognition.start();
-    setListeningState(true);
-    playVoiceStartSound();
-    speak(fillTemplate(pickRandom(JARVIS_RESPONSES.voice_start)));
-  } catch (e) {
-    console.warn('Could not start recognition:', e);
+
+  if (_pinMode === 'setup') {
+    _pinSetupFirst = pin;
+    pinInput.value = '';
+    _pinMode = 'confirm_setup';
+    document.getElementById('pin-title').textContent = 'CONFIRM ACCESS CODE';
+    document.getElementById('pin-subtitle').textContent = 'Enter the code again to confirm';
+    const btn = document.getElementById('pin-submit-btn');
+    if (btn) btn.textContent = 'CONFIRM';
+    pinInput.focus();
+    return;
   }
-}
 
-function stopListening() {
-  if (State.recognition) State.recognition.stop();
-  setListeningState(false);
-  speak(pickRandom(JARVIS_RESPONSES.voice_end));
-}
-
-function setListeningState(active) {
-  State.isListening = active;
-  updateVoiceUI(active);
-  const label = $('arc-state-label');
-  if (label) {
-    label.textContent = active ? 'LISTENING — SPEAK YOUR COMMAND' : 'STANDBY — CLICK TO ACTIVATE VOICE';
-  }
-}
-
-function updateVoiceUI(speaking) {
-  const arc = $('jarvis-arc');
-  const btn = $('voice-btn');
-  if (arc) {
-    arc.classList.toggle('listening', State.isListening);
-    arc.classList.toggle('speaking', speaking && !State.isListening);
-  }
-  if (btn) {
-    btn.classList.toggle('active', State.isListening || speaking);
-  }
-}
-
-// ── Wake word listener ────────────────────────────────────────────────
-function startWakeWordListener() {
-  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-  if (!SpeechRecognition || State.wakeRecognition) return;
-
-  State.wakeRecognition = new SpeechRecognition();
-  State.wakeRecognition.continuous = true;
-  State.wakeRecognition.interimResults = false;
-  State.wakeRecognition.lang = 'en-US';
-
-  State.wakeRecognition.onresult = (event) => {
-    const transcript = event.results[event.results.length - 1][0].transcript.toLowerCase();
-    if (transcript.includes('jarvis') || transcript.includes('hey jarvis')) {
-      if (!State.isListening) startListening();
+  if (_pinMode === 'confirm_setup') {
+    if (pin !== _pinSetupFirst) {
+      _showPinError('Codes do not match');
+      pinInput.value = '';
+      _pinMode = 'setup';
+      _pinSetupFirst = '';
+      document.getElementById('pin-title').textContent = 'CREATE ACCESS CODE';
+      document.getElementById('pin-subtitle').textContent = 'Set a 4-6 digit code to secure JARVIS';
+      const btn = document.getElementById('pin-submit-btn');
+      if (btn) btn.textContent = 'SET CODE';
+      pinInput.focus();
+      return;
     }
-  };
+    const hash = await _hashPin(pin);
+    _memCache[PIN_STORAGE_KEY] = hash;
+    _memCache[PIN_SESSION_KEY] = 'true';
+    api('settings', 'POST', { pin_hash: hash });
+    pinInput.value = '';
+    pinInput.classList.add('success');
+    document.getElementById('pin-title').textContent = 'ACCESS CODE SET';
+    document.getElementById('pin-subtitle').textContent = 'Initializing JARVIS...';
+    const btn = document.getElementById('pin-submit-btn');
+    if (btn) btn.style.display = 'none';
+    const footer = document.getElementById('pin-footer');
+    if (footer) footer.textContent = '';
+    setTimeout(() => {
+      document.getElementById('pin-overlay').classList.add('hidden');
+      _startBoot();
+    }, 1200);
+    return;
+  }
 
-  State.wakeRecognition.onend = () => {
-    if (State.wakeWordActive) {
+  if (_pinMode === 'verify') {
+    const hash = await _hashPin(pin);
+    const stored = _memCache[PIN_STORAGE_KEY];
+    if (hash === stored) {
+      _memCache[PIN_SESSION_KEY] = 'true';
+      _pinAttempts = 0;
+      pinInput.classList.add('success');
+      document.getElementById('pin-title').textContent = 'ACCESS GRANTED';
+      document.getElementById('pin-subtitle').textContent = 'Welcome back, Sir';
+      const btn = document.getElementById('pin-submit-btn');
+      if (btn) btn.style.display = 'none';
+      const footer = document.getElementById('pin-footer');
+      if (footer) footer.textContent = '';
       setTimeout(() => {
-        if (State.wakeRecognition && State.wakeWordActive) {
-          try { State.wakeRecognition.start(); } catch(e) {}
-        }
-      }, 500);
+        document.getElementById('pin-overlay').classList.add('hidden');
+        _startBoot();
+      }, 1000);
+    } else {
+      _pinAttempts++;
+      pinInput.value = '';
+      pinInput.classList.add('error');
+      setTimeout(() => pinInput.classList.remove('error'), 600);
+      if (_pinAttempts >= PIN_MAX_ATTEMPTS) {
+        _pinLocked = true;
+        _showPinError('Too many attempts — locked for 30 seconds');
+        pinInput.disabled = true;
+        const btn = document.getElementById('pin-submit-btn');
+        if (btn) { btn.style.opacity = '0.3'; btn.style.pointerEvents = 'none'; }
+        setTimeout(() => {
+          _pinLocked = false;
+          _pinAttempts = 0;
+          _clearPinError();
+          pinInput.disabled = false;
+          const btn2 = document.getElementById('pin-submit-btn');
+          if (btn2) { btn2.style.opacity = '1'; btn2.style.pointerEvents = 'auto'; }
+          pinInput.focus();
+        }, PIN_LOCKOUT_MS);
+      } else {
+        _showPinError('Invalid code — ' + (PIN_MAX_ATTEMPTS - _pinAttempts) + ' attempts remaining');
+        pinInput.focus();
+      }
     }
-  };
-
-  try { State.wakeRecognition.start(); } catch(e) {}
-}
-
-// ── Audio visualizer ──────────────────────────────────────────────────
-async function startAudioVisualizer() {
-  if (!navigator.mediaDevices) return;
-  try {
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    const ctx = State.audioCtx || new (window.AudioContext || window.webkitAudioContext)();
-    State.audioCtx = ctx;
-    const analyser = ctx.createAnalyser();
-    analyser.fftSize = 64;
-    const source = ctx.createMediaStreamSource(stream);
-    source.connect(analyser);
-    State.analyser = analyser;
-    State.micSource = source;
-    State.audioVizActive = true;
-    _drawVizFrame();
-  } catch(e) {
-    console.log('Mic not available for visualizer');
   }
 }
 
-function _drawVizFrame() {
-  if (!State.audioVizActive || !State.analyser) return;
-  const bufLen = State.analyser.frequencyBinCount;
-  const dataArr = new Uint8Array(bufLen);
-  State.analyser.getByteFrequencyData(dataArr);
-  const avg = dataArr.reduce((a, b) => a + b, 0) / bufLen;
-  const arc = $('jarvis-arc');
-  if (arc && State.isListening) {
-    const intensity = Math.min(avg / 128, 1);
-    arc.style.setProperty('--mic-intensity', intensity.toFixed(2));
-  }
-  requestAnimationFrame(_drawVizFrame);
+function _startBoot() {
+  init();
 }
 
-// ══════════════════════════════════════════════════════════
-//  KEYBOARD SHORTCUTS
-// ══════════════════════════════════════════════════════════
-function initKeyboardShortcuts() {
-  document.addEventListener('keydown', (e) => {
-    // Space bar = toggle voice (when not in input)
-    if (e.code === 'Space' && !['INPUT','TEXTAREA'].includes(document.activeElement.tagName)) {
-      e.preventDefault();
-      toggleVoice();
-    }
-    // Escape = stop everything
-    if (e.code === 'Escape') {
-      stopSpeaking();
-      stopListening();
-      closeModal();
-    }
-    // Ctrl+D = dashboard
-    if (e.ctrlKey && e.key === 'd') { e.preventDefault(); navigate('dashboard'); }
-    // Ctrl+P = projects
-    if (e.ctrlKey && e.key === 'p') { e.preventDefault(); navigate('projects'); }
-    // Ctrl+M = memory
-    if (e.ctrlKey && e.key === 'm') { e.preventDefault(); navigate('memory'); }
-    // Ctrl+R = research
-    if (e.ctrlKey && e.key === 'r') { e.preventDefault(); navigate('research'); }
+// ═══════════════════════════════════════════════════════
+//  BOOT SEQUENCE
+// ═══════════════════════════════════════════════════════
+function runBootSequence() {
+  return new Promise(resolve => {
+    const bar = $('boot-bar');
+    const statusText = $('boot-status-text');
+    const steps = [
+      [10, 'Loading JARVIS core systems...'],
+      [25, 'Initializing arc reactor interface...'],
+      [40, 'Connecting to Stark database...'],
+      [55, 'Loading voice recognition module...'],
+      [70, 'Synchronizing memory banks...'],
+      [85, 'Running system diagnostics...'],
+      [95, 'Finalizing interface protocols...'],
+      [100, 'All systems operational.'],
+    ];
+
+    let i = 0;
+    const next = () => {
+      if (i >= steps.length) {
+        setTimeout(resolve, 400);
+        return;
+      }
+      const [pct, msg] = steps[i++];
+      if (bar) bar.style.width = pct + '%';
+      if (statusText) statusText.textContent = msg;
+      setTimeout(next, 280 + Math.random() * 120);
+    };
+    next();
   });
 }
 
-// ══════════════════════════════════════════════════════════
-//  INITIALISATION
-// ══════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════
+//  INIT
+// ═══════════════════════════════════════════════════════
 async function init() {
+  // Run boot sequence first
+  await runBootSequence();
+
+  // Hide boot overlay
+  const bootOverlay = $('boot-overlay');
+  const appShell = $('app-shell');
+  if (bootOverlay) bootOverlay.classList.add('hidden');
+  if (appShell) appShell.style.opacity = '1';
+
+  // Init subsystems
   initAudio();
+  initVoice();
   startClock();
-  initVoiceRecognition();
-  initKeyboardShortcuts();
   animateDiagnostics();
+  bindEvents();
 
-  // Load voices (async in some browsers)
-  loadVoices();
-  if (State.synthesis) State.synthesis.onvoiceschanged = loadVoices;
+  // Load settings
+  await loadSettings();
 
-  // Load settings and apply
-  const settings = await api('settings');
-  applySettings(settings);
-  updateGreeting();
-
-  // Navigate to initial view
+  // Determine initial view from hash
   const hash = window.location.hash.replace('#', '');
-  const validViews = ['dashboard','projects','chat','operations','research','schedule','memory','settings'];
-  navigate(validViews.includes(hash) ? hash : 'dashboard');
+  const validViews = ['dashboard', 'chat', 'projects', 'operations', 'schedule', 'research', 'memory', 'settings'];
+  const initialView = validViews.includes(hash) ? hash : 'dashboard';
 
-  // Greet user
+  // Load initial data
+  navigate(initialView);
+
+  // Speak greeting after short delay
   setTimeout(() => {
     const greeting = fillTemplate(pickRandom(JARVIS_RESPONSES.greetings), { time: timeOfDay(), name: State.userName });
     speakText(greeting);
     updateGreeting();
     playSuccessSound();
   }, 800);
-}
-
-// ══════════════════════════════════════════════════════════
-//  EVENT BINDINGS — Chat form
-// ══════════════════════════════════════════════════════════
-function initChatForm() {
-  const form = $('chat-form');
-  const input = $('chat-input');
-  if (form && input) {
-    form.addEventListener('submit', (e) => {
-      e.preventDefault();
-      sendMessage(input);
-    });
-    input.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter' && !e.shiftKey) {
-        e.preventDefault();
-        sendMessage(input);
-      }
-    });
-  }
-}
-
-// ══════════════════════════════════════════════════════════
-//  PIN LOCK SYSTEM
-// ══════════════════════════════════════════════════════════
-const PIN_KEY = 'jarvis_pin';
-const PIN_ENABLED_KEY = 'jarvis_pin_enabled';
-const PIN_LOCKED_KEY = 'jarvis_locked';
-
-function _getPinStore() {
-  // Use sessionStorage for lock state (clears on tab close)
-  // Use localStorage for PIN config (persists)
-  return {
-    pin: localStorage.getItem(PIN_KEY),
-    enabled: localStorage.getItem(PIN_ENABLED_KEY) === 'true',
-    locked: sessionStorage.getItem(PIN_LOCKED_KEY) !== 'false',
-  };
-}
-
-function _savePinStore(pin, enabled) {
-  localStorage.setItem(PIN_KEY, pin || '');
-  localStorage.setItem(PIN_ENABLED_KEY, enabled ? 'true' : 'false');
-}
-
-function showPinLock() {
-  const overlay = $('pin-lock-overlay');
-  if (overlay) overlay.classList.add('active');
-  // Focus first pin input
-  const first = document.querySelector('.pin-digit');
-  if (first) setTimeout(() => first.focus(), 100);
-}
-
-function hidePinLock() {
-  const overlay = $('pin-lock-overlay');
-  if (overlay) overlay.classList.remove('active');
-  sessionStorage.setItem(PIN_LOCKED_KEY, 'false');
-}
-
-function initPinInputs() {
-  const digits = $$('.pin-digit');
-  digits.forEach((input, idx) => {
-    input.addEventListener('input', (e) => {
-      // Allow only digits
-      input.value = input.value.replace(/\D/g, '').slice(-1);
-      if (input.value && idx < digits.length - 1) {
-        digits[idx + 1].focus();
-      }
-      // Auto-submit when all filled
-      if ([...digits].every(d => d.value)) {
-        setTimeout(submitPin, 100);
-      }
-    });
-    input.addEventListener('keydown', (e) => {
-      if (e.key === 'Backspace' && !input.value && idx > 0) {
-        digits[idx - 1].focus();
-        digits[idx - 1].value = '';
-      }
-    });
-    // Handle paste
-    input.addEventListener('paste', (e) => {
-      e.preventDefault();
-      const text = (e.clipboardData || window.clipboardData).getData('text').replace(/\D/g, '');
-      [...digits].forEach((d, i) => { d.value = text[i] || ''; });
-      if (text.length >= digits.length) setTimeout(submitPin, 100);
-    });
-  });
-}
-
-function submitPin() {
-  const digits = $$('.pin-digit');
-  const entered = [...digits].map(d => d.value).join('');
-  const { pin } = _getPinStore();
-
-  if (entered === pin) {
-    hidePinLock();
-    playSuccessSound();
-    // Clear inputs
-    digits.forEach(d => d.value = '');
-  } else {
-    playErrorSound();
-    // Shake animation
-    const container = document.querySelector('.pin-inputs');
-    if (container) {
-      container.classList.add('shake');
-      setTimeout(() => container.classList.remove('shake'), 600);
-    }
-    digits.forEach(d => d.value = '');
-    const first = digits[0];
-    if (first) first.focus();
-  }
-}
-
-function setupPinInSettings() {
-  const enableToggle = $('setting-pin-enabled');
-  const pinSetup = $('pin-setup-section');
-  const pinInput = $('setting-pin-value');
-  const saveBtn = $('save-pin-btn');
-  const { pin, enabled } = _getPinStore();
-
-  if (enableToggle) {
-    enableToggle.checked = enabled;
-    enableToggle.addEventListener('change', () => {
-      if (pinSetup) pinSetup.style.display = enableToggle.checked ? 'block' : 'none';
-      if (!enableToggle.checked) {
-        _savePinStore('', false);
-        showToast('PIN lock disabled');
-      }
-    });
-  }
-  if (pinSetup) pinSetup.style.display = enabled ? 'block' : 'none';
-  if (pinInput && pin) pinInput.value = pin;
-  if (saveBtn) {
-    saveBtn.addEventListener('click', () => {
-      const newPin = pinInput ? pinInput.value.replace(/\D/g, '').slice(0, 6) : '';
-      if (newPin.length < 4) {
-        showToast('PIN must be at least 4 digits');
-        return;
-      }
-      _savePinStore(newPin, true);
-      showToast('PIN saved');
-      playSuccessSound();
-    });
-  }
-}
-
-function _initPinSystem() {
-  const { pin, enabled, locked } = _getPinStore();
-  initPinInputs();
-  setupPinInSettings();
-  if (enabled && pin && locked) {
-    showPinLock();
-  }
-  // Lock button in header
-  const lockBtn = $('lock-btn');
-  if (lockBtn) {
-    lockBtn.addEventListener('click', () => {
-      const { pin: p, enabled: e } = _getPinStore();
-      if (e && p) {
-        sessionStorage.setItem(PIN_LOCKED_KEY, 'true');
-        showPinLock();
-      } else {
-        showToast('Enable PIN lock in settings first');
-      }
-    });
-  }
-  // Init chat form here too
-  initChatForm();
-  init();
 }
 
 // Start when DOM is ready
