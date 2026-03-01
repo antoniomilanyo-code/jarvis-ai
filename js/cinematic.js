@@ -8,28 +8,28 @@
 
 const CinematicVFX = (() => {
 
-  // ─── State ──────────────────────────────────────────────────────────
+  // ─── State ─────────────────────────────────────────────
   let activeOverlay = null;
   let activeCanvas = null;
   let animFrame = null;
   let isAnimating = false;
 
-  // ─── Color Palette ─────────────────────────────────────────────────────
+  // ─── Color Palette ────────────────────────────────────────────
   const CYAN   = '#00d4ff';
   const AMBER  = '#f0a500';
   const CYAN_A = 'rgba(0,212,255,';
   const AMB_A  = 'rgba(240,165,0,';
   const WHITE  = 'rgba(255,255,255,';
 
-  // ─── Data Stream Characters ───────────────────────────────────────────────
+  // ─── Data Stream Characters ────────────────────────────────────
   const HEX_CHARS = '0123456789ABCDEF';
-  const DATA_CHARS = '01アイウエオカキクケコサシスセソABCDEF<>{}[]|=+-/*$#@!?%';
+  const DATA_CHARS = '01アイウエオカキクケコサシスセソタチツテトナニヌネノABCDEF<>{}[]|=+-/*$#@!?%';
 
   function rnd(min, max) { return Math.random() * (max - min) + min; }
   function rndInt(min, max) { return Math.floor(rnd(min, max + 1)); }
   function pick(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
 
-  // ─── Overlay Factory ───────────────────────────────────────────────────
+  // ─── Overlay Factory ───────────────────────────────────────────
   function createOverlay() {
     const el = document.createElement('div');
     el.className = 'vfx-overlay';
@@ -72,9 +72,9 @@ const CinematicVFX = (() => {
     return overlay;
   }
 
-  // ═══════════════════════════════════════════════════════════
+  // ═════════════════════════════════════════════════════════
   //  1. DATA PROCESSING — spinning scanner + matrix data stream
-  // ═══════════════════════════════════════════════════════════
+  // ═════════════════════════════════════════════════════════
   function playDataProcessing(label = 'PROCESSING') {
     const overlay = showOverlay(2400);
     const cv = createCanvas(overlay);
@@ -152,9 +152,9 @@ const CinematicVFX = (() => {
     animFrame = requestAnimationFrame(drawMatrix);
   }
 
-  // ═══════════════════════════════════════════════════════════
+  // ═════════════════════════════════════════════════════════
   //  2. PROJECT INITIALIZATION — blueprint schematics drawing
-  // ═══════════════════════════════════════════════════════════
+  // ═════════════════════════════════════════════════════════
   function playProjectInit(projectName = 'NEW PROJECT') {
     const overlay = showOverlay(3000);
     const cv = createCanvas(overlay);
@@ -286,9 +286,9 @@ const CinematicVFX = (() => {
     animFrame = requestAnimationFrame(frame);
   }
 
-  // ═══════════════════════════════════════════════════════════
+  // ═════════════════════════════════════════════════════════
   //  3. MEMORY INDEXING — neural network nodes + connections
-  // ═══════════════════════════════════════════════════════════
+  // ═════════════════════════════════════════════════════════
   function playMemoryIndex() {
     const overlay = showOverlay(2800);
     const cv = createCanvas(overlay);
@@ -429,9 +429,9 @@ const CinematicVFX = (() => {
     setTimeout(() => clearInterval(counterInterval), 2800);
   }
 
-  // ═══════════════════════════════════════════════════════════
+  // ═════════════════════════════════════════════════════════
   //  4. OPERATION LAUNCH — countdown + scan lines + status bars
-  // ═══════════════════════════════════════════════════════════
+  // ═════════════════════════════════════════════════════════
   function playOperationLaunch(opName = 'OPERATION') {
     const overlay = showOverlay(3000);
     const cv = createCanvas(overlay);
@@ -528,9 +528,9 @@ const CinematicVFX = (() => {
     setTimeout(() => clearInterval(cdInterval), 3000);
   }
 
-  // ═══════════════════════════════════════════════════════════
+  // ═════════════════════════════════════════════════════════
   //  5. RESEARCH ANALYSIS — magnifier scan + knowledge graph
-  // ═══════════════════════════════════════════════════════════
+  // ═════════════════════════════════════════════════════════
   function playResearchAnalysis(topic = 'DATA') {
     const overlay = showOverlay(2800);
     const cv = createCanvas(overlay);
@@ -644,9 +644,9 @@ const CinematicVFX = (() => {
     animFrame = requestAnimationFrame(frame);
   }
 
-  // ═══════════════════════════════════════════════════════════
+  // ═════════════════════════════════════════════════════════
   //  PUBLIC API
-  // ═══════════════════════════════════════════════════════════
+  // ═════════════════════════════════════════════════════════
   return {
     processing: (label) => playDataProcessing(label || 'PROCESSING'),
     projectInit: (name) => playProjectInit(name || 'NEW PROJECT'),
