@@ -43,9 +43,9 @@
   </div>
 </div>
 
-<!-- ═══════════════════════════════════════════════ -->
+<!-- ═══════════════════════════════════════════════════ -->
 <!--  BOOT SEQUENCE OVERLAY                              -->
-<!-- ═══════════════════════════════════════════════ -->
+<!-- ═══════════════════════════════════════════════════ -->
 <div id="boot-overlay" role="status" aria-live="polite" aria-label="JARVIS initializing">
   <div class="boot-logo">
     <div class="arc-outer"></div>
@@ -62,9 +62,9 @@
 <!-- Skip to main content -->
 <a href="#hud-main" class="sr-only" style="position:absolute;left:-9999px;top:0;z-index:9999;padding:8px 16px;background:var(--bg-elevated);color:var(--text-cyan)">Skip to main content</a>
 
-<!-- ═══════════════════════════════════════════════ -->
+<!-- ═══════════════════════════════════════════════════ -->
 <!--  APP SHELL                                          -->
-<!-- ═══════════════════════════════════════════════ -->
+<!-- ═══════════════════════════════════════════════════ -->
 <div class="app-shell" id="app-shell" style="opacity:0;transition:opacity 0.5s ease">
 
   <!-- ── TOP HUD HEADER ── -->
@@ -183,6 +183,13 @@
         <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/>
       </svg>
       <span class="nav-tooltip">Artifacts</span>
+    </button>
+
+    <button class="nav-item" data-view="briefings" title="Briefings" aria-label="Intelligence Briefings">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" aria-hidden="true">
+        <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/>
+      </svg>
+      <span class="nav-tooltip">Briefings</span>
     </button>
 
     <div class="nav-spacer"></div>
@@ -412,6 +419,13 @@
         <div id="operations-list" style="display:flex;flex-direction:column;gap:var(--sp-3)">
           <!-- Injected by JS -->
         </div>
+        <!-- Operation Groups (P5) -->
+        <div style="margin-top:var(--sp-6)">
+          <h2 style="font-family:var(--font-display);font-size:var(--text-lg);font-weight:600;color:var(--text-cyan);letter-spacing:0.08em;text-transform:uppercase;margin-bottom:var(--sp-4)">Parallel Operation Groups</h2>
+          <div id="operation-groups-panel">
+            <!-- Injected by JS -->
+          </div>
+        </div>
       </div>
     </section>
 
@@ -485,9 +499,14 @@
           </button>
         </div>
 
-        <div class="search-bar" style="margin-bottom:var(--sp-5)">
+        <div class="search-bar" style="margin-bottom:var(--sp-3)">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
           <input type="text" class="search-input" id="memory-search" placeholder="Search memory banks..." aria-label="Search memories">
+        </div>
+
+        <!-- Category Filter Bar (P6) -->
+        <div id="memory-filter-bar" style="display:flex;flex-wrap:wrap;gap:var(--sp-2);margin-bottom:var(--sp-5)">
+          <!-- Injected by JS -->
         </div>
 
         <div class="memory-grid" id="memory-grid">
@@ -536,6 +555,26 @@
           </div>
         </div>
         <div id="artifacts-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:var(--sp-4)">
+          <!-- Injected by JS -->
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== BRIEFINGS VIEW (P7) ===== -->
+    <section id="view-briefings" class="view" aria-label="Intelligence Briefings">
+      <div style="padding:var(--sp-6)">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:var(--sp-6)">
+          <div>
+            <h1 style="font-family:var(--font-display);font-size:var(--text-xl);font-weight:700;color:var(--text-cyan);letter-spacing:0.1em;text-transform:uppercase">Intelligence Briefings</h1>
+            <p style="font-size:var(--text-sm);color:var(--text-muted);margin-top:var(--sp-1)">Analytics, insights, and self-improvement recommendations</p>
+          </div>
+        </div>
+        <!-- Analytics Dashboard -->
+        <div id="briefings-analytics">
+          <!-- Injected by JS -->
+        </div>
+        <!-- Briefings List -->
+        <div id="briefings-list">
           <!-- Injected by JS -->
         </div>
       </div>
@@ -732,6 +771,10 @@
   <button class="mobile-nav-btn" data-view="artifacts">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
     Artifacts
+  </button>
+  <button class="mobile-nav-btn" data-view="briefings">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" aria-hidden="true"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
+    Briefings
   </button>
   <button class="mobile-nav-btn" data-view="settings">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
