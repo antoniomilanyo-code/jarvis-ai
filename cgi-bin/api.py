@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-"""JARVIS AI Assistant — Unified CGI API v2
-   Added: scheduled_tasks, user_profile tables
+"""JARVIS AI Assistant — Unified CGI API v3
+   Added: task_proposals, task_logs, artifacts tables (P1+P2)
 """
 import json, os, sqlite3, sys, traceback
 from datetime import datetime
@@ -110,6 +110,60 @@ def init_db(conn):
             value TEXT NOT NULL,
             updated_at TEXT DEFAULT (datetime('now'))
         );
+
+        /* ═══ P1: Task Proposals ═══ */
+        CREATE TABLE IF NOT EXISTS task_proposals (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            conversation_id INTEGER,
+            project_id INTEGER,
+            title TEXT NOT NULL,
+            objective TEXT DEFAULT '',
+            reasoning TEXT DEFAULT '',
+            steps_json TEXT DEFAULT '[]',
+            required_tools_json TEXT DEFAULT '[]',
+            risk_level TEXT DEFAULT 'low',
+            impact_level TEXT DEFAULT 'medium',
+            status TEXT DEFAULT 'proposed',
+            created_at TEXT DEFAULT (datetime('now')),
+            updated_at TEXT DEFAULT (datetime('now')),
+            FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE SET NULL
+        );
+
+        /* ═══ P2: Task Logs ═══ */
+        CREATE TABLE IF NOT EXISTS task_logs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            task_id INTEGER,
+            proposal_id INTEGER,
+            step INTEGER DEFAULT 0,
+            action TEXT DEFAULT '',
+            input_json TEXT DEFAULT '{}',
+            output_json TEXT DEFAULT '{}',
+            status TEXT DEFAULT 'completed',
+            error TEXT DEFAULT '',
+            duration_ms INTEGER DEFAULT 0,
+            created_at TEXT DEFAULT (datetime('now')),
+            FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE,
+            FOREIGN KEY (proposal_id) REFERENCES task_proposals(id) ON DELETE CASCADE
+        );
+
+        /* ═══ P2: Artifacts ═══ */
+        CREATE TABLE IF NOT EXISTS artifacts (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            task_id INTEGER,
+            proposal_id INTEGER,
+            project_id INTEGER,
+            type TEXT DEFAULT 'report',
+            title TEXT DEFAULT '',
+            description TEXT DEFAULT '',
+            content_json TEXT DEFAULT '{}',
+            file_url TEXT DEFAULT '',
+            file_type TEXT DEFAULT '',
+            created_at TEXT DEFAULT (datetime('now')),
+            FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE SET NULL,
+            FOREIGN KEY (proposal_id) REFERENCES task_proposals(id) ON DELETE SET NULL,
+            FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE SET NULL
+        );
+
         INSERT OR IGNORE INTO settings (key, value) VALUES
             ('user_name', '"Sir"'),
             ('voice_rate', '0.9'),
@@ -120,7 +174,6 @@ def init_db(conn):
             ('theme', '"dark"');
     """)
     conn.commit()
-    # Migrate: add columns to existing tables if missing
     _migrate(conn)
 
 def _migrate(conn):
@@ -134,7 +187,7 @@ def _migrate(conn):
             conn.execute(f"ALTER TABLE {table} ADD COLUMN {col} {col_def}")
             conn.commit()
         except sqlite3.OperationalError:
-            pass  # Column already exists
+            pass
 
 def json_response(data, status=200):
     print(f"Status: {status}")
@@ -161,6 +214,10 @@ def parse_qs(qs):
             k, v = part.split('=', 1)
             params[k] = unquote(v)
     return params
+
+# ═══════════════════════════════════════════════════════
+#  EXISTING HANDLERS
+# ═══════════════════════════════════════════════════════
 
 def handle_conversations(conn, method, params, body):
     if method == 'GET':
@@ -447,6 +504,153 @@ def handle_settings(conn, method, params, body):
         rows = conn.execute("SELECT key, value FROM settings").fetchall()
         return json_response({r['key']: json.loads(r['value']) for r in rows})
 
+# ═══════════════════════════════════════════════════════
+#  P1: TASK PROPOSALS HANDLER
+# ═══════════════════════════════════════════════════════
+
+def handle_task_proposals(conn, method, params, body):
+    if method == 'GET':
+        status = params.get('status', '')
+        pid = params.get('id', '')
+        if pid:
+            row = conn.execute("SELECT * FROM task_proposals WHERE id=?", (pid,)).fetchone()
+            return json_response(dict(row) if row else {})
+        elif status:
+            rows = conn.execute(
+                "SELECT * FROM task_proposals WHERE status=? ORDER BY created_at DESC", (status,)
+            ).fetchall()
+        else:
+            rows = conn.execute("SELECT * FROM task_proposals ORDER BY created_at DESC").fetchall()
+        return json_response([dict(r) for r in rows])
+    elif method == 'POST':
+        conn.execute(
+            """INSERT INTO task_proposals
+               (conversation_id, project_id, title, objective, reasoning,
+                steps_json, required_tools_json, risk_level, impact_level, status)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (body.get('conversation_id'), body.get('project_id'),
+             body.get('title', 'Untitled Proposal'),
+             body.get('objective', ''),
+             body.get('reasoning', ''),
+             json.dumps(body.get('steps', [])),
+             json.dumps(body.get('required_tools', [])),
+             body.get('risk_level', 'low'),
+             body.get('impact_level', 'medium'),
+             body.get('status', 'proposed'))
+        )
+        conn.commit()
+        row = conn.execute("SELECT * FROM task_proposals ORDER BY id DESC LIMIT 1").fetchone()
+        return json_response(dict(row), 201)
+    elif method == 'PUT':
+        pid = params.get('id') or body.get('id')
+        fields = {k: v for k, v in body.items() if k in (
+            'title', 'objective', 'reasoning', 'status', 'project_id',
+            'risk_level', 'impact_level'
+        )}
+        # Handle JSON fields
+        if 'steps' in body:
+            fields['steps_json'] = json.dumps(body['steps'])
+        if 'required_tools' in body:
+            fields['required_tools_json'] = json.dumps(body['required_tools'])
+        if fields and pid:
+            sets = ', '.join(f"{k}=?" for k in fields)
+            vals = list(fields.values()) + [datetime.utcnow().isoformat(), pid]
+            conn.execute(f"UPDATE task_proposals SET {sets}, updated_at=? WHERE id=?", vals)
+            conn.commit()
+        row = conn.execute("SELECT * FROM task_proposals WHERE id=?", (pid,)).fetchone()
+        return json_response(dict(row) if row else {})
+    elif method == 'DELETE':
+        pid = params.get('id')
+        if pid:
+            conn.execute("DELETE FROM task_proposals WHERE id=?", (pid,))
+            conn.commit()
+        return json_response({'deleted': True})
+
+# ═══════════════════════════════════════════════════════
+#  P2: TASK LOGS HANDLER
+# ═══════════════════════════════════════════════════════
+
+def handle_task_logs(conn, method, params, body):
+    if method == 'GET':
+        task_id = params.get('task_id', '')
+        proposal_id = params.get('proposal_id', '')
+        if task_id:
+            rows = conn.execute(
+                "SELECT * FROM task_logs WHERE task_id=? ORDER BY step ASC", (task_id,)
+            ).fetchall()
+        elif proposal_id:
+            rows = conn.execute(
+                "SELECT * FROM task_logs WHERE proposal_id=? ORDER BY step ASC", (proposal_id,)
+            ).fetchall()
+        else:
+            rows = conn.execute("SELECT * FROM task_logs ORDER BY created_at DESC LIMIT 50").fetchall()
+        return json_response([dict(r) for r in rows])
+    elif method == 'POST':
+        conn.execute(
+            """INSERT INTO task_logs
+               (task_id, proposal_id, step, action, input_json, output_json, status, error, duration_ms)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (body.get('task_id'), body.get('proposal_id'),
+             body.get('step', 0), body.get('action', ''),
+             json.dumps(body.get('input', {})),
+             json.dumps(body.get('output', {})),
+             body.get('status', 'completed'),
+             body.get('error', ''),
+             body.get('duration_ms', 0))
+        )
+        conn.commit()
+        row = conn.execute("SELECT * FROM task_logs ORDER BY id DESC LIMIT 1").fetchone()
+        return json_response(dict(row), 201)
+
+# ═══════════════════════════════════════════════════════
+#  P2: ARTIFACTS HANDLER
+# ═══════════════════════════════════════════════════════
+
+def handle_artifacts(conn, method, params, body):
+    if method == 'GET':
+        project_id = params.get('project_id', '')
+        proposal_id = params.get('proposal_id', '')
+        atype = params.get('type', '')
+        if project_id:
+            rows = conn.execute(
+                "SELECT * FROM artifacts WHERE project_id=? ORDER BY created_at DESC", (project_id,)
+            ).fetchall()
+        elif proposal_id:
+            rows = conn.execute(
+                "SELECT * FROM artifacts WHERE proposal_id=? ORDER BY created_at DESC", (proposal_id,)
+            ).fetchall()
+        elif atype:
+            rows = conn.execute(
+                "SELECT * FROM artifacts WHERE type=? ORDER BY created_at DESC", (atype,)
+            ).fetchall()
+        else:
+            rows = conn.execute("SELECT * FROM artifacts ORDER BY created_at DESC LIMIT 50").fetchall()
+        return json_response([dict(r) for r in rows])
+    elif method == 'POST':
+        conn.execute(
+            """INSERT INTO artifacts
+               (task_id, proposal_id, project_id, type, title, description, content_json, file_url, file_type)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (body.get('task_id'), body.get('proposal_id'),
+             body.get('project_id'), body.get('type', 'report'),
+             body.get('title', ''), body.get('description', ''),
+             json.dumps(body.get('content', {})),
+             body.get('file_url', ''), body.get('file_type', ''))
+        )
+        conn.commit()
+        row = conn.execute("SELECT * FROM artifacts ORDER BY id DESC LIMIT 1").fetchone()
+        return json_response(dict(row), 201)
+    elif method == 'DELETE':
+        aid = params.get('id')
+        if aid:
+            conn.execute("DELETE FROM artifacts WHERE id=?", (aid,))
+            conn.commit()
+        return json_response({'deleted': True})
+
+# ═══════════════════════════════════════════════════════
+#  MAIN ROUTER
+# ═══════════════════════════════════════════════════════
+
 def main():
     method = os.environ.get('REQUEST_METHOD', 'GET').upper()
     qs = os.environ.get('QUERY_STRING', '')
@@ -454,7 +658,6 @@ def main():
     action = params.get('action', '')
     body = read_body() if method in ('POST', 'PUT', 'PATCH') else {}
 
-    # Handle CORS preflight
     if method == 'OPTIONS':
         print("Status: 204")
         print("Access-Control-Allow-Origin: *")
@@ -477,6 +680,10 @@ def main():
             'scheduled_tasks': handle_scheduled_tasks,
             'user_profile': handle_user_profile,
             'settings': handle_settings,
+            # P1 + P2: New handlers
+            'task_proposals': handle_task_proposals,
+            'task_logs': handle_task_logs,
+            'artifacts': handle_artifacts,
         }
 
         handler = handlers.get(action)
