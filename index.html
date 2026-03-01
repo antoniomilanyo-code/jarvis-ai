@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
   <meta name="description" content="JARVIS AI Personal Assistant — Stark Industries Interface">
   <title>JARVIS — Stark AI Interface</title>
   <!-- PWA -->
@@ -33,31 +33,13 @@
     </div>
     <div class="pin-title" id="pin-title">ENTER ACCESS CODE</div>
     <div class="pin-subtitle" id="pin-subtitle">Identity verification required</div>
-    <div class="pin-dots" id="pin-dots">
-      <span class="pin-dot"></span>
-      <span class="pin-dot"></span>
-      <span class="pin-dot"></span>
-      <span class="pin-dot"></span>
-      <span class="pin-dot"></span>
-      <span class="pin-dot"></span>
+    <!-- Native input that iOS keyboard can type into -->
+    <div class="pin-input-wrap">
+      <input type="tel" id="pin-input" class="pin-native-input" maxlength="6" inputmode="numeric" pattern="[0-9]*" autocomplete="off" placeholder="• • • • • •">
     </div>
-    <input type="password" id="pin-input" class="pin-input" maxlength="6" inputmode="numeric" pattern="[0-9]*" autocomplete="off" autofocus>
-    <div class="pin-keypad" id="pin-keypad">
-      <button class="pin-key" data-key="1">1</button>
-      <button class="pin-key" data-key="2">2</button>
-      <button class="pin-key" data-key="3">3</button>
-      <button class="pin-key" data-key="4">4</button>
-      <button class="pin-key" data-key="5">5</button>
-      <button class="pin-key" data-key="6">6</button>
-      <button class="pin-key" data-key="7">7</button>
-      <button class="pin-key" data-key="8">8</button>
-      <button class="pin-key" data-key="9">9</button>
-      <button class="pin-key pin-key-clear" data-key="clear">C</button>
-      <button class="pin-key" data-key="0">0</button>
-      <button class="pin-key pin-key-enter" data-key="enter">&#10003;</button>
-    </div>
+    <button class="pin-submit-btn" id="pin-submit-btn" type="button">VERIFY</button>
     <div class="pin-error" id="pin-error"></div>
-    <div class="pin-footer" id="pin-footer"></div>
+    <div class="pin-footer" id="pin-footer">Tap the field above to enter your code</div>
   </div>
 </div>
 
@@ -159,6 +141,18 @@
       <span class="nav-tooltip">Operations</span>
     </button>
 
+    <button class="nav-item" data-view="schedule" title="Scheduled Tasks" aria-label="Scheduled Tasks">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+        <rect x="3" y="4" width="18" height="18" rx="2"/>
+        <line x1="16" y1="2" x2="16" y2="6"/>
+        <line x1="8" y1="2" x2="8" y2="6"/>
+        <line x1="3" y1="10" x2="21" y2="10"/>
+        <circle cx="12" cy="16" r="2"/>
+        <line x1="12" y1="14" x2="12" y2="16"/>
+      </svg>
+      <span class="nav-tooltip">Schedule</span>
+    </button>
+
     <button class="nav-item" data-view="research" title="Research" aria-label="Research Center">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" aria-hidden="true">
         <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
@@ -258,6 +252,11 @@
             <div class="kpi-label">Conversations</div>
             <div class="kpi-value" id="kpi-convos">0</div>
             <div class="kpi-sub">Total exchanges logged</div>
+          </div>
+          <div class="kpi-card hud-panel">
+            <div class="kpi-label">Scheduled</div>
+            <div class="kpi-value" id="kpi-schedule-count">0</div>
+            <div class="kpi-sub">Pending schedule items</div>
           </div>
         </div><!-- /kpi-row -->
 
@@ -393,6 +392,43 @@
         </div>
         <div id="operations-list" style="display:flex;flex-direction:column;gap:var(--sp-3)">
           <!-- Injected by JS -->
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== SCHEDULE VIEW ===== -->
+    <section id="view-schedule" class="view" aria-label="Scheduled Tasks">
+      <div class="view-header" style="padding:var(--sp-6) var(--sp-6) 0">
+        <h2 style="font-family:var(--font-display);font-size:var(--text-xl);font-weight:700;color:var(--text-cyan);letter-spacing:0.1em;text-transform:uppercase">SCHEDULED TASKS</h2>
+        <p class="view-subtitle" style="font-size:var(--text-sm);color:var(--text-muted);margin-top:var(--sp-1)">Autonomous task scheduling &amp; execution timeline</p>
+      </div>
+
+      <div style="padding:var(--sp-5) var(--sp-6)">
+        <!-- Stats bar -->
+        <div class="schedule-stats" style="display:grid;grid-template-columns:repeat(4,1fr);gap:var(--sp-3);margin-bottom:var(--sp-5);">
+          <div class="kpi-card hud-panel">
+            <div class="kpi-value" id="kpi-scheduled">0</div>
+            <div class="kpi-label">Scheduled</div>
+          </div>
+          <div class="kpi-card hud-panel">
+            <div class="kpi-value" id="kpi-in-progress">0</div>
+            <div class="kpi-label">In Progress</div>
+          </div>
+          <div class="kpi-card hud-panel">
+            <div class="kpi-value" id="kpi-completed-tasks">0</div>
+            <div class="kpi-label">Completed</div>
+          </div>
+          <div class="kpi-card hud-panel">
+            <div class="kpi-value" id="kpi-delayed">0</div>
+            <div class="kpi-label">Delayed</div>
+          </div>
+        </div>
+
+        <!-- Timeline -->
+        <div id="schedule-timeline" class="schedule-timeline">
+          <div style="color:var(--text-faint);font-family:var(--font-mono);font-size:var(--text-xs);text-align:center;padding:var(--sp-6)">
+            No scheduled tasks yet. Ask JARVIS to schedule something via WhatsApp.
+          </div>
         </div>
       </div>
     </section>
@@ -614,6 +650,17 @@
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" aria-hidden="true"><path d="M4 4h16v2H4z"/><path d="M4 10h16v2H4z"/><path d="M4 16h16v2H4z"/></svg>
     Memory
   </button>
+  <button class="mobile-nav-btn" data-view="schedule">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+      <rect x="3" y="4" width="18" height="18" rx="2"/>
+      <line x1="16" y1="2" x2="16" y2="6"/>
+      <line x1="8" y1="2" x2="8" y2="6"/>
+      <line x1="3" y1="10" x2="21" y2="10"/>
+      <circle cx="12" cy="16" r="2"/>
+      <line x1="12" y1="14" x2="12" y2="16"/>
+    </svg>
+    Schedule
+  </button>
   <button class="mobile-nav-btn" data-view="settings">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
     Config
@@ -762,19 +809,78 @@
 <!-- ─── AUDIO VISUALIZER (arc reactor ring) ─── -->
 <canvas id="audio-viz-canvas" aria-hidden="true"></canvas>
 
+<!-- ─── PWA INSTALL BANNER ─── -->
+<div id="pwa-install-banner" class="pwa-install-banner">
+  <div class="pwa-install-inner">
+    <div class="pwa-install-icon">
+      <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#00d4ff" stroke-width="1.5">
+        <rect x="5" y="2" width="14" height="20" rx="2" ry="2"/>
+        <line x1="12" y1="18" x2="12" y2="18.01" stroke-width="2" stroke-linecap="round"/>
+      </svg>
+    </div>
+    <div class="pwa-install-text">
+      <strong>Install JARVIS</strong>
+      <span>Add to home screen for fullscreen app experience</span>
+    </div>
+    <div class="pwa-install-actions">
+      <button onclick="installApp()" class="pwa-btn-install">Install</button>
+      <button onclick="dismissInstallBanner()" class="pwa-btn-dismiss">&times;</button>
+    </div>
+  </div>
+</div>
+
 <!-- ─── SCRIPTS ─── -->
 <script src="./js/brain.js" defer></script>
 <script src="./js/app.js" defer></script>
 <script src="./js/cinematic.js" defer></script>
 <script>
-  // Register Service Worker for PWA install
+  // ─── PWA: Service Worker + Install Prompt ───
+  let deferredInstallPrompt = null;
+
+  // CRITICAL: Prevent iOS standalone mode from swallowing touch events
+  // iOS PWAs steal touches for overscroll bounce prevention on fixed/overflow:hidden bodies
+  document.addEventListener('touchstart', function(){}, {passive: true});
+
   if ('serviceWorker' in navigator) {
-    window.addEventListener('load', () => {
-      navigator.serviceWorker.register('./sw.js').then(reg => {
-        console.log('JARVIS SW registered:', reg.scope);
-      }).catch(err => console.warn('SW registration failed:', err));
+    // Force update check on every load
+    navigator.serviceWorker.register('./sw.js', { updateViaCache: 'none' })
+      .then(reg => console.log('[JARVIS] Service Worker registered, scope:', reg.scope))
+      .catch(err => console.warn('[JARVIS] SW registration failed:', err));
+  }
+
+  // Capture the beforeinstallprompt event
+  window.addEventListener('beforeinstallprompt', (e) => {
+    e.preventDefault();
+    deferredInstallPrompt = e;
+    // Show the install banner
+    const banner = document.getElementById('pwa-install-banner');
+    if (banner) banner.classList.add('visible');
+  });
+
+  function installApp() {
+    if (!deferredInstallPrompt) return;
+    deferredInstallPrompt.prompt();
+    deferredInstallPrompt.userChoice.then(choice => {
+      if (choice.outcome === 'accepted') {
+        console.log('[JARVIS] App installed');
+      }
+      deferredInstallPrompt = null;
+      const banner = document.getElementById('pwa-install-banner');
+      if (banner) banner.classList.remove('visible');
     });
   }
+
+  function dismissInstallBanner() {
+    const banner = document.getElementById('pwa-install-banner');
+    if (banner) banner.classList.remove('visible');
+  }
+
+  // Hide banner if already installed (standalone mode)
+  window.addEventListener('appinstalled', () => {
+    const banner = document.getElementById('pwa-install-banner');
+    if (banner) banner.classList.remove('visible');
+    deferredInstallPrompt = null;
+  });
 </script>
 </body>
 </html>
