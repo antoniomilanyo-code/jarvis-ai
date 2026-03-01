@@ -3,10 +3,12 @@
   "short_name": "JARVIS",
   "description": "Personal AI assistant powered by Stark Industries technology",
   "start_url": "./index.html",
+  "scope": "./",
   "display": "standalone",
   "orientation": "any",
   "background_color": "#0a0e17",
   "theme_color": "#00d4ff",
+  "id": "jarvis-ai-assistant",
   "icons": [
     {
       "src": "./icon-512.png",
@@ -15,10 +17,22 @@
       "purpose": "any"
     },
     {
+      "src": "./icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
       "src": "./icon-192.png",
       "sizes": "192x192",
       "type": "image/png",
       "purpose": "any"
+    },
+    {
+      "src": "./icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable"
     },
     {
       "src": "./icon-128.png",
@@ -34,5 +48,6 @@
     }
   ],
   "categories": ["productivity", "utilities"],
-  "lang": "en"
+  "lang": "en",
+  "prefer_related_applications": false
 }
