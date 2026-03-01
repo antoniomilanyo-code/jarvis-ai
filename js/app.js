@@ -128,7 +128,7 @@ function _unlockAudio() {
 const $ = id => document.getElementById(id);
 const $$ = sel => document.querySelectorAll(sel);
 
-// ── In-memory cache helpers ──────────────────────────────────────
+// ── In-memory cache helpers ──────────────────────────────
 const _memCache = {};
 function lsGet(table) {
   return _memCache[table] || null;
@@ -163,7 +163,7 @@ const DEFAULT_SETTINGS = {
   el_model: 'eleven_multilingual_v2',
 };
 
-// ── Remote API Configuration ───────────────────────────────────
+// ── Remote API Configuration ─────────────────────────
 const API_BASE = '__CGI_BIN__/api.py';
 
 async function api(action, method = 'GET', body = null, params = '') {
@@ -200,7 +200,7 @@ async function api(action, method = 'GET', body = null, params = '') {
       }
     }
 
-    // ── ALL OTHER TABLES: fetch from remote API ────────────────────
+    // ── ALL OTHER TABLES: fetch from remote API ─────────────
     let url = `${API_BASE}?action=${encodeURIComponent(action)}`;
     if (params) url += '&' + params;
 
@@ -221,7 +221,7 @@ async function api(action, method = 'GET', body = null, params = '') {
     return data;
   } catch (err) {
     console.warn(`API ${action} failed, falling back to cache:`, err);
-    // ── Offline fallback: use memory cache ──────────────
+    // ── Offline fallback: use memory cache ──────────
     if (action === 'settings') {
       return Object.assign({}, DEFAULT_SETTINGS, lsGet('settings') || {});
     }
@@ -413,6 +413,7 @@ function navigate(viewName) {
   else if (viewName === 'proposals') loadProposals();
   else if (viewName === 'artifacts') loadArtifacts();
   else if (viewName === 'memory') loadMemory();
+  else if (viewName === 'briefings') loadBriefings();
   else if (viewName === 'settings') loadSettings();
 }
 
@@ -525,12 +526,14 @@ function renderMessage(msg) {
   const side = isJarvis ? 'jarvis' : 'user';
   const avatar = isJarvis ? 'J' : (State.userName[0] || 'U');
   const time = formatDateTime(msg.created_at);
+  const sentiment = msg.sentiment ? getSentimentIndicator(msg.sentiment) : '';
+  const source = msg.source ? `<span style="font-family:var(--font-mono);font-size:9px;padding:1px 5px;border-radius:3px;background:rgba(0,212,255,0.08);color:var(--text-faint);margin-left:4px">${msg.source.toUpperCase()}</span>` : '';
   return `
     <div class="chat-message ${side}">
       <div class="chat-avatar">${avatar}</div>
       <div>
         <div class="chat-bubble">${escHtml(msg.content)}</div>
-        <div class="chat-time">${isJarvis ? 'JARVIS' : State.userName} — ${time}</div>
+        <div class="chat-time">${isJarvis ? 'JARVIS' : State.userName} — ${time}${sentiment}${source}</div>
       </div>
     </div>`;
 }
@@ -1406,6 +1409,9 @@ async function loadOperations() {
   const list = $('operations-list');
   if (!list) return;
 
+  // Also load operation groups (P5)
+  loadOperationGroups();
+
   if (ops.length === 0) {
     list.innerHTML = `
       <div style="text-align:center;padding:var(--sp-16);color:var(--text-muted)">
@@ -1662,7 +1668,7 @@ async function loadArtifacts() {
 
   const typeIcons = {
     'pdf': '📄', 'document': '📝', 'image': '🖼️', 'spreadsheet': '📊',
-    'presentation': '📽️', 'code': '💻', 'audio': '🎵', 'video': '🎤',
+    'presentation': '📽️', 'code': '💻', 'audio': '🎵', 'video': '🎬',
     'report': '📋', 'analysis': '🔬', 'design': '🎨', 'other': '📁'
   };
 
@@ -1740,6 +1746,11 @@ window.deleteResearch = async function(id) {
 //  MEMORY
 // ═══════════════════════════════════════════════════════
 async function loadMemory(searchQuery = '') {
+  // Use enhanced version with category filtering (P6)
+  return loadMemoryEnhanced(searchQuery, '');
+}
+
+/* --- Legacy loadMemory kept for reference ---
   const params = searchQuery ? `search=${encodeURIComponent(searchQuery)}` : '';
   const memories = await api('memories', 'GET', null, params) || [];
   const grid = $('memory-grid');
@@ -1774,12 +1785,275 @@ async function loadMemory(searchQuery = '') {
       </div>`;
   }).join('');
 }
+/* --- end legacy loadMemory --- */
 
 window.deleteMemory = async function(id) {
   await api('memories', 'DELETE', null, `id=${id}`);
   loadMemory();
   playClickSound();
 };
+
+// ═══════════════════════════════════════════════════════
+//  OPERATIONS — Enhanced with Operation Groups (P5)
+// ═══════════════════════════════════════════════════════
+async function loadOperationGroups() {
+  try {
+    const groups = await api('operation_groups') || [];
+    const container = $('operation-groups-panel');
+    if (!container) return;
+
+    if (groups.length === 0) {
+      container.innerHTML = '<div style="color:var(--text-faint);font-family:var(--font-mono);font-size:var(--text-xs);padding:var(--sp-4);text-align:center">No parallel operation groups active</div>';
+      return;
+    }
+
+    container.innerHTML = groups.map(g => {
+      let ops = [];
+      try { ops = JSON.parse(g.operations_json || '[]'); } catch {}
+      const totalOps = ops.length;
+      const completedOps = ops.filter(o => o.status === 'complete').length;
+      const groupProgress = totalOps > 0 ? Math.round((completedOps / totalOps) * 100) : 0;
+      const statusColor = g.status === 'complete' ? 'var(--accent-green, #10b981)' : g.status === 'failed' ? 'var(--accent-red, #ef4444)' : 'var(--accent-cyan)';
+
+      return `
+        <div class="hud-panel" style="padding:var(--sp-4);margin-bottom:var(--sp-3);border-left:3px solid ${statusColor}">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:var(--sp-3)">
+            <div style="font-family:var(--font-mono);font-size:var(--text-sm);font-weight:600;color:var(--text-primary)">${escHtml(g.name)}</div>
+            <span style="font-family:var(--font-mono);font-size:10px;padding:2px 8px;border-radius:var(--radius-sm);background:${statusColor}22;color:${statusColor};border:1px solid ${statusColor}44;text-transform:uppercase">${escHtml(g.status)}</span>
+          </div>
+          <div style="display:flex;gap:var(--sp-2);flex-wrap:wrap;margin-bottom:var(--sp-3)">
+            ${ops.map(o => {
+              const opColor = o.status === 'complete' ? '#10b981' : o.status === 'processing' ? '#00d4ff' : o.status === 'failed' ? '#ef4444' : '#475569';
+              return `<div style="display:flex;align-items:center;gap:4px;font-size:10px;font-family:var(--font-mono);color:${opColor}"><span style="width:6px;height:6px;border-radius:50%;background:${opColor};display:inline-block"></span>${escHtml(o.name || 'Op')}</div>`;
+            }).join('')}
+          </div>
+          <div style="display:flex;align-items:center;gap:var(--sp-3)">
+            <div class="op-progress-bar" style="flex:1"><div class="op-progress-fill" style="width:${groupProgress}%"></div></div>
+            <span style="font-family:var(--font-mono);font-size:var(--text-xs);color:var(--text-cyan)">${completedOps}/${totalOps}</span>
+          </div>
+        </div>`;
+    }).join('');
+  } catch (err) {
+    console.warn('loadOperationGroups error:', err);
+  }
+}
+
+// ═══════════════════════════════════════════════════════
+//  ENHANCED MEMORY VIEW (P6)
+// ═══════════════════════════════════════════════════════
+async function loadMemoryEnhanced(searchQuery = '', filterCategory = '') {
+  let params = '';
+  if (searchQuery) params += `search=${encodeURIComponent(searchQuery)}`;
+  if (filterCategory) params += `${params ? '&' : ''}category=${encodeURIComponent(filterCategory)}`;
+  const memories = await api('memories', 'GET', null, params) || [];
+  const grid = $('memory-grid');
+  if (!grid) return;
+
+  // Build category counts for filter bar
+  const categories = {};
+  memories.forEach(m => {
+    const cat = m.category || 'general';
+    categories[cat] = (categories[cat] || 0) + 1;
+  });
+
+  const filterBar = $('memory-filter-bar');
+  if (filterBar) {
+    const catIcons = { technical: '💻', schedule: '📅', ideas: '💡', knowledge: '📚', contacts: '👤', financial: '💰', preferences: '⚙️', general: '📁' };
+    filterBar.innerHTML = `
+      <button class="memory-filter-btn ${!filterCategory ? 'active' : ''}" onclick="filterMemories('')" style="font-family:var(--font-mono);font-size:10px;padding:4px 10px;border-radius:100px;background:${!filterCategory ? 'rgba(0,212,255,0.15)' : 'transparent'};color:${!filterCategory ? 'var(--accent-cyan)' : 'var(--text-muted)'};border:1px solid ${!filterCategory ? 'rgba(0,212,255,0.3)' : 'var(--border-dim)'};cursor:pointer">ALL (${memories.length})</button>
+      ${Object.entries(categories).map(([cat, count]) => `
+        <button class="memory-filter-btn ${filterCategory === cat ? 'active' : ''}" onclick="filterMemories('${cat}')" style="font-family:var(--font-mono);font-size:10px;padding:4px 10px;border-radius:100px;background:${filterCategory === cat ? 'rgba(0,212,255,0.15)' : 'transparent'};color:${filterCategory === cat ? 'var(--accent-cyan)' : 'var(--text-muted)'};border:1px solid ${filterCategory === cat ? 'rgba(0,212,255,0.3)' : 'var(--border-dim)'};cursor:pointer">${catIcons[cat] || '📁'} ${cat.toUpperCase()} (${count})</button>
+      `).join('')}
+    `;
+  }
+
+  if (memories.length === 0) {
+    grid.innerHTML = `
+      <div style="grid-column:1/-1;text-align:center;padding:var(--sp-16);color:var(--text-muted)">
+        <div style="font-family:var(--font-display);font-size:var(--text-lg);margin-bottom:var(--sp-3)">${searchQuery || filterCategory ? 'No memories match your filters' : 'Memory banks empty'}</div>
+        <div style="font-size:var(--text-sm)">Start a conversation or save notes to populate memory banks.</div>
+      </div>`;
+    return;
+  }
+
+  grid.innerHTML = memories.map(m => {
+    let tags = [];
+    try { tags = JSON.parse(m.tags || '[]'); } catch {}
+    if (typeof tags === 'string') try { tags = JSON.parse(tags); } catch { tags = []; }
+    const importance = m.importance || 5;
+    const category = m.category || 'general';
+    const catIcons = { technical: '💻', schedule: '📅', ideas: '💡', knowledge: '📚', contacts: '👤', financial: '💰', preferences: '⚙️', general: '📁' };
+    const impColor = importance >= 8 ? '#ef4444' : importance >= 6 ? '#f59e0b' : importance >= 4 ? '#00d4ff' : '#475569';
+
+    return `
+      <div class="memory-node" style="position:relative">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:var(--sp-2)">
+          <div style="display:flex;align-items:center;gap:var(--sp-2)">
+            <span style="font-size:0.9rem">${catIcons[category] || '📁'}</span>
+            <div class="memory-title">${escHtml(m.title)}</div>
+          </div>
+          <div style="display:flex;align-items:center;gap:4px">
+            <span style="font-family:var(--font-mono);font-size:9px;padding:1px 6px;border-radius:var(--radius-sm);background:${impColor}22;color:${impColor};border:1px solid ${impColor}44" title="Importance: ${importance}/10">IMP:${importance}</span>
+          </div>
+        </div>
+        <div class="memory-content">${escHtml(m.content)}</div>
+        ${tags.length ? `
+          <div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:var(--sp-3)">
+            ${tags.map(t => `<span style="font-family:var(--font-mono);font-size:10px;padding:2px 6px;border-radius:100px;background:rgba(0,212,255,0.08);color:var(--accent-cyan);border:1px solid rgba(0,212,255,0.2)">${escHtml(typeof t === 'string' ? t : String(t))}</span>`).join('')}
+          </div>` : ''}
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-top:var(--sp-3)">
+          <div style="display:flex;align-items:center;gap:var(--sp-2)">
+            <span style="font-family:var(--font-mono);font-size:10px;padding:1px 6px;border-radius:var(--radius-sm);background:rgba(100,116,139,0.1);color:var(--text-faint);text-transform:uppercase">${escHtml(category)}</span>
+            <span class="memory-date">${formatDateTime(m.created_at)}</span>
+          </div>
+          <button onclick="deleteMemory(${m.id})" style="color:var(--text-faint);width:20px;height:20px;display:flex;align-items:center;justify-content:center" aria-label="Delete memory">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </button>
+        </div>
+      </div>`;
+  }).join('');
+}
+
+window.filterMemories = function(cat) {
+  const searchVal = $('memory-search')?.value || '';
+  loadMemoryEnhanced(searchVal, cat);
+};
+
+// ═══════════════════════════════════════════════════════
+//  BRIEFINGS (P7) — Intelligence Dashboard
+// ═══════════════════════════════════════════════════════
+async function loadBriefings() {
+  const [briefings, analytics] = await Promise.all([
+    api('briefings') || [],
+    api('analytics').catch(() => null),
+  ]);
+
+  const briefingsList = briefings || [];
+
+  // Analytics summary
+  const analyticsPanel = $('briefings-analytics');
+  if (analyticsPanel && analytics) {
+    const totalConvos = analytics.total_conversations || 0;
+    const sentimentDist = analytics.sentiment_distribution || {};
+    const activeHours = analytics.active_hours || [];
+    const memoryGrowth = analytics.memory_growth || {};
+    const topIntents = analytics.top_intents || [];
+
+    // Build sentiment mini-chart
+    const sentiments = ['positive', 'neutral', 'negative'];
+    const sentColors = { positive: '#10b981', neutral: '#64748b', negative: '#ef4444' };
+    const totalSent = sentiments.reduce((s, k) => s + (sentimentDist[k] || 0), 0) || 1;
+
+    analyticsPanel.innerHTML = `
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:var(--sp-4);margin-bottom:var(--sp-5)">
+        <div class="hud-panel" style="padding:var(--sp-4);text-align:center">
+          <div style="font-family:var(--font-mono);font-size:var(--text-2xl);font-weight:700;color:var(--accent-cyan)">${totalConvos}</div>
+          <div style="font-family:var(--font-mono);font-size:10px;color:var(--text-faint);text-transform:uppercase">Total Conversations</div>
+        </div>
+        <div class="hud-panel" style="padding:var(--sp-4)">
+          <div style="font-family:var(--font-mono);font-size:10px;color:var(--text-faint);text-transform:uppercase;margin-bottom:var(--sp-2)">Sentiment Distribution</div>
+          <div style="display:flex;gap:2px;height:24px;border-radius:var(--radius-sm);overflow:hidden">
+            ${sentiments.map(s => {
+              const pct = Math.round(((sentimentDist[s] || 0) / totalSent) * 100);
+              return pct > 0 ? `<div style="width:${pct}%;background:${sentColors[s]};position:relative" title="${s}: ${pct}%"></div>` : '';
+            }).join('')}
+          </div>
+          <div style="display:flex;justify-content:space-between;margin-top:4px">
+            ${sentiments.map(s => `<span style="font-family:var(--font-mono);font-size:9px;color:${sentColors[s]}">${s.charAt(0).toUpperCase() + s.slice(1)} ${sentimentDist[s] || 0}</span>`).join('')}
+          </div>
+        </div>
+        <div class="hud-panel" style="padding:var(--sp-4)">
+          <div style="font-family:var(--font-mono);font-size:10px;color:var(--text-faint);text-transform:uppercase;margin-bottom:var(--sp-2)">Peak Activity Hours</div>
+          <div style="display:flex;align-items:flex-end;gap:2px;height:32px">
+            ${Array.from({length:24}, (_, h) => {
+              const count = activeHours.find(a => a.hour === h)?.count || 0;
+              const maxCount = Math.max(...activeHours.map(a => a.count || 0), 1);
+              const barH = Math.max(2, Math.round((count / maxCount) * 32));
+              const isActive = count > maxCount * 0.5;
+              return `<div style="flex:1;height:${barH}px;background:${isActive ? 'var(--accent-cyan)' : 'var(--bg-dim)'};border-radius:1px" title="${h}:00 — ${count} msgs"></div>`;
+            }).join('')}
+          </div>
+          <div style="display:flex;justify-content:space-between;margin-top:2px">
+            <span style="font-family:var(--font-mono);font-size:8px;color:var(--text-faint)">00h</span>
+            <span style="font-family:var(--font-mono);font-size:8px;color:var(--text-faint)">12h</span>
+            <span style="font-family:var(--font-mono);font-size:8px;color:var(--text-faint)">23h</span>
+          </div>
+        </div>
+      </div>
+      ${topIntents.length > 0 ? `
+        <div class="hud-panel" style="padding:var(--sp-4);margin-bottom:var(--sp-5)">
+          <div style="font-family:var(--font-mono);font-size:10px;color:var(--text-faint);text-transform:uppercase;margin-bottom:var(--sp-3)">Top Intents</div>
+          <div style="display:flex;flex-wrap:wrap;gap:var(--sp-2)">
+            ${topIntents.slice(0, 10).map(i => `<span style="font-family:var(--font-mono);font-size:10px;padding:3px 10px;border-radius:100px;background:rgba(0,212,255,0.08);color:var(--accent-cyan);border:1px solid rgba(0,212,255,0.2)">${escHtml(i.intent || i)} <span style="color:var(--text-faint)">(${i.count || ''})</span></span>`).join('')}
+          </div>
+        </div>` : ''}
+    `;
+  }
+
+  // Briefings list
+  const container = $('briefings-list');
+  if (!container) return;
+
+  if (briefingsList.length === 0) {
+    container.innerHTML = `
+      <div style="text-align:center;padding:var(--sp-12);color:var(--text-muted)">
+        <div style="font-family:var(--font-display);font-size:var(--text-lg);margin-bottom:var(--sp-3)">No briefings generated yet</div>
+        <div style="font-size:var(--text-sm)">JARVIS will generate intelligence briefings as interaction patterns emerge.</div>
+      </div>`;
+    return;
+  }
+
+  const typeIcons = { daily: '📋', weekly: '📊', insight: '💡', recommendation: '🎯', alert: '⚠️' };
+  const typeColors = { daily: 'var(--accent-cyan)', weekly: '#8b5cf6', insight: '#f59e0b', recommendation: '#10b981', alert: '#ef4444' };
+
+  container.innerHTML = briefingsList.map(b => {
+    let metrics = {};
+    try { metrics = JSON.parse(b.metrics_json || '{}'); } catch {}
+    let recommendations = [];
+    try { recommendations = JSON.parse(b.recommendations_json || '[]'); } catch {}
+    const icon = typeIcons[b.type] || '📋';
+    const color = typeColors[b.type] || 'var(--accent-cyan)';
+
+    return `
+      <div class="hud-panel" style="padding:var(--sp-5);margin-bottom:var(--sp-4);border-left:3px solid ${color}">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:var(--sp-3)">
+          <div style="display:flex;align-items:center;gap:var(--sp-2)">
+            <span style="font-size:1.1rem">${icon}</span>
+            <div>
+              <div style="font-family:var(--font-mono);font-size:var(--text-sm);font-weight:600;color:var(--text-primary)">${escHtml(b.title)}</div>
+              <div style="font-family:var(--font-mono);font-size:10px;color:var(--text-faint);text-transform:uppercase">${escHtml(b.type || 'briefing')} BRIEFING</div>
+            </div>
+          </div>
+          <span style="font-family:var(--font-mono);font-size:var(--text-xs);color:var(--text-faint)">${formatDateTime(b.created_at)}</span>
+        </div>
+        ${b.content ? `<div style="font-size:var(--text-sm);color:var(--text-muted);line-height:1.6;margin-bottom:var(--sp-3)">${escHtml(b.content)}</div>` : ''}
+        ${recommendations.length > 0 ? `
+          <div style="margin-top:var(--sp-3)">
+            <div style="font-family:var(--font-mono);font-size:10px;color:var(--text-faint);text-transform:uppercase;margin-bottom:var(--sp-2)">Recommendations</div>
+            <ul style="margin:0;padding-left:var(--sp-5);font-size:var(--text-xs);color:var(--text-muted)">
+              ${recommendations.map(r => `<li style="margin-bottom:2px">${escHtml(typeof r === 'string' ? r : r.text || JSON.stringify(r))}</li>`).join('')}
+            </ul>
+          </div>` : ''}
+      </div>`;
+  }).join('');
+}
+
+// ═══════════════════════════════════════════════════════
+//  CHAT — Sentiment Indicators (P4/P7)
+// ═══════════════════════════════════════════════════════
+function getSentimentIndicator(sentiment) {
+  if (!sentiment) return '';
+  const indicators = {
+    positive: { icon: '🟢', label: 'Positive' },
+    negative: { icon: '🔴', label: 'Negative' },
+    neutral: { icon: '⚪', label: 'Neutral' },
+    excited: { icon: '⚡', label: 'Excited' },
+    frustrated: { icon: '😤', label: 'Frustrated' },
+    curious: { icon: '🔍', label: 'Curious' },
+  };
+  const s = indicators[sentiment] || indicators['neutral'];
+  return `<span style="font-size:10px;margin-left:4px" title="Mood: ${s.label}">${s.icon}</span>`;
+}
 
 // ═══════════════════════════════════════════════════════
 //  SETTINGS
@@ -2579,7 +2853,7 @@ async function init() {
 
   // Determine initial view from hash
   const hash = window.location.hash.replace('#', '');
-  const validViews = ['dashboard', 'chat', 'projects', 'operations', 'schedule', 'proposals', 'artifacts', 'research', 'memory', 'settings'];
+  const validViews = ['dashboard', 'chat', 'projects', 'operations', 'schedule', 'proposals', 'artifacts', 'research', 'memory', 'briefings', 'settings'];
   const initialView = validViews.includes(hash) ? hash : 'dashboard';
 
   // Load initial data
