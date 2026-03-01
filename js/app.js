@@ -50,2845 +50,1459 @@ const JARVIS_RESPONSES = {
   ],
   unknown: [
     "I'm afraid I don't quite follow, {name}. Could you rephrase that?",
-    "I didn't catch that entirely. Could you be more specific, {name}?",
-    "My apologies, {name}. That command isn't in my current parameters. Try 'help' for a list of commands.",
+    "I didn't catch that, {name}. Please try again.",
   ],
-  help: `Available commands, {name}:
-• "new project [name]" — Create a new project
-• "show projects" — Navigate to projects
-• "new task [name]" — Add task to current project
-• "research [topic]" — Open research center
-• "show chat" — Open conversation panel
-• "remember [fact]" — Save to memory banks
-• "show memory" — Open memory banks
-• "show dashboard" — Return to command center
-• "settings" — Open configuration panel
-• "what time is it" — Current time
-• "status" — System diagnostics report`,
 };
 
-// ═══════════════════════════════════════════════════════
-//  APPLICATION STATE
-// ═══════════════════════════════════════════════════════
+const UI = {
+  sidebar:          () => document.getElementById('sidebar'),
+  mainContent:      () => document.getElementById('main-content'),
+  inputBar:         () => document.getElementById('inputBar'),
+  chatInput:        () => document.getElementById('chatInput'),
+  sendBtn:          () => document.getElementById('sendBtn'),
+  voiceBtn:         () => document.getElementById('voiceBtn'),
+  statusDot:        () => document.getElementById('statusDot'),
+  statusText:       () => document.getElementById('statusText'),
+  greetingEl:       () => document.getElementById('greeting'),
+  navLinks:         () => document.querySelectorAll('.nav-link'),
+  themeToggleBtn:   () => document.getElementById('themeToggleBtn'),
+  modalOverlay:     () => document.getElementById('modalOverlay'),
+  modalTitle:       () => document.getElementById('modalTitle'),
+  modalBody:        () => document.getElementById('modalBody'),
+  modalCancel:      () => document.getElementById('modalCancel'),
+  modalConfirm:     () => document.getElementById('modalConfirm'),
+  toastContainer:   () => document.getElementById('toastContainer'),
+  authOverlay:      () => document.getElementById('authOverlay'),
+  authInput:        () => document.getElementById('authInput'),
+  authBtn:          () => document.getElementById('authBtn'),
+  authError:        () => document.getElementById('authError'),
+};
+
 const State = {
-  currentView: 'dashboard',
-  currentProjectId: null,
-  userName: 'Sir',
-  voiceSettings: { rate: 0.9, pitch: 1.0, volume: 1.0, voiceURI: '' },
-  isListening: false,
-  isSpeaking: false,
-  recognition: null,
-  synthesis: window.speechSynthesis,
-  availableVoices: [],
-  selectedVoice: null,
-  audioCtx: null,
-  kpis: { projects: 0, memories: 0, operations: 0, conversations: 0 },
-  // Voice upgrade state
-  continuousMode: false,
-  wakeWordActive: false,
-  wakeRecognition: null,
-  speechQueue: [],
-  analyser: null,
-  micSource: null,
-  audioVizActive: false,
-  // ElevenLabs TTS
-  elevenLabs: {
-    enabled: true,
-    apiKey: 'ae057a5a1eac4465a8d4ad630bda48d0a6aad444db35a024543ef51748464e43',
-    voiceId: 'P3TTlDkzxma0sdCGP8YZ',
-    model: 'eleven_multilingual_v2',
-    stability: 0.5,
-    similarityBoost: 0.75,
-    style: 0.4,
+  currentView:    'dashboard',
+  isLoading:      false,
+  voiceActive:    false,
+  recognition:    null,
+  theme:          'dark',
+  userName:       'Boss',
+  apiEndpoint:    null,
+  data: {
+    projects:  [],
+    tasks:     [],
+    research:  [],
+    memories:  [],
+    briefings: [],
   },
-  elevenLabsAudio: null,  // current Audio element for streaming
 };
-
-// Audio element for ElevenLabs TTS — primed on first user interaction to bypass autoplay
-let _elAudio = null;
-let _audioUnlocked = false;
-
-function _unlockAudio() {
-  if (_audioUnlocked) return;
-  _audioUnlocked = true;
-  // Create and prime an audio element with a silent sample
-  _elAudio = new Audio();
-  const ctx = State.audioCtx || new (window.AudioContext || window.webkitAudioContext)();
-  if (ctx.state === 'suspended') ctx.resume();
-  State.audioCtx = ctx;
-  // Play silent audio to unlock the element
-  _elAudio.src = 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA=';
-  _elAudio.volume = 0;
-  _elAudio.play().then(() => { _elAudio.pause(); _elAudio.volume = 1; }).catch(() => {});
-}
 
 // ═══════════════════════════════════════════════════════
 //  UTILITIES
 // ═══════════════════════════════════════════════════════
-const $ = id => document.getElementById(id);
-const $$ = sel => document.querySelectorAll(sel);
-
-// ── Session-persistent cache helpers ──────────────────────────────
-// Uses in-memory cache; auth tokens are persisted via API
-const _memCache = {};
-function lsGet(table) {
-  return _memCache[table] || null;
-}
-function lsSet(table, value) {
-  _memCache[table] = value;
-}
-function lsNextId(rows) {
-  return rows.length ? Math.max(...rows.map(r => r.id || 0)) + 1 : 1;
-}
-function parseParams(params) {
-  const p = {};
-  if (!params) return p;
-  params.split('&').forEach(pair => { const [k, v] = pair.split('='); if (k) p[decodeURIComponent(k)] = decodeURIComponent(v || ''); });
-  return p;
-}
-
-// Default settings
-const DEFAULT_SETTINGS = {
-  user_name: 'Sir',
-  voice_rate: 0.9,
-  voice_pitch: 1.0,
-  voice_volume: 1.0,
-  glow_intensity: 1.0,
-  animation_speed: 1.0,
-  theme: 'dark',
-  continuous_mode: 'true',
-  wake_word: 'true',
-  el_enabled: 'true',
-  el_apikey: 'ae057a5a1eac4465a8d4ad630bda48d0a6aad444db35a024543ef51748464e43',
-  el_voiceid: 'P3TTlDkzxma0sdCGP8YZ',
-  el_model: 'eleven_multilingual_v2',
-};
-
-// ── Remote API Configuration ─────────────────────────
-// When deployed via Perplexity, __CGI_BIN__ is replaced with the real URL.
-// When on GitHub Pages, we read the saved API endpoint from URL hash or prompt for it.
-let API_BASE = '__CGI_BIN__/api.py';
-
-// Detect if we're running on GitHub Pages (static, no CGI backend)
-const _IS_GITHUB_PAGES = location.hostname.endsWith('.github.io') || location.hostname.endsWith('.pages.dev');
-const _API_STORAGE_KEY = 'jarvis_api_endpoint';
-
-if (_IS_GITHUB_PAGES) {
-  // Try to load saved API endpoint from URL hash or cookie
-  const hashMatch = location.hash.match(/api=([^&]+)/);
-  if (hashMatch) {
-    API_BASE = decodeURIComponent(hashMatch[1]);
-  }
-}
-
-// Allow runtime API endpoint configuration
-function setApiEndpoint(url) {
-  API_BASE = url;
-  // Store in URL hash for persistence on GitHub Pages
-  if (_IS_GITHUB_PAGES) {
-    const currentHash = location.hash.replace(/[?&]?api=[^&]+/, '');
-    location.hash = currentHash + (currentHash ? '&' : '') + 'api=' + encodeURIComponent(url);
-  }
-}
-function getApiEndpoint() { return API_BASE; }
-
-async function api(action, method = 'GET', body = null, params = '') {
-  try {
-    // ── SETTINGS: memory cache, API as source of truth ──
-    if (action === 'settings') {
-      if (method === 'GET') {
-        // Return cached settings immediately, refresh from API in background
-        const cached = lsGet('settings');
-        const base = Object.assign({}, DEFAULT_SETTINGS, cached || {});
-        // Fire-and-forget: sync from API
-        fetch(`${API_BASE}?action=settings`, { method: 'GET' })
-          .then(r => r.json())
-          .then(remote => {
-            if (remote && typeof remote === 'object' && !remote.error) {
-              const merged = Object.assign({}, DEFAULT_SETTINGS, remote);
-              lsSet('settings', merged);
-            }
-          }).catch(() => {});
-        return base;
-      }
-      if (method === 'POST' && body) {
-        // Save to memory cache immediately for responsiveness
-        const current = Object.assign({}, DEFAULT_SETTINGS, lsGet('settings') || {});
-        const updated = Object.assign(current, body);
-        lsSet('settings', updated);
-        // Sync to API in background
-        fetch(`${API_BASE}?action=settings`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(body)
-        }).catch(() => {});
-        return updated;
-      }
-    }
-
-    // ── ALL OTHER TABLES: fetch from remote API ─────────────
-    let url = `${API_BASE}?action=${encodeURIComponent(action)}`;
-    if (params) url += '&' + params;
-
-    const opts = { method };
-    if (body && (method === 'POST' || method === 'PUT')) {
-      opts.headers = { 'Content-Type': 'application/json' };
-      opts.body = JSON.stringify(body);
-    }
-
-    const res = await fetch(url, opts);
-    const data = await res.json();
-
-    // Cache GET results in memory for offline fallback
-    if (method === 'GET' && Array.isArray(data)) {
-      lsSet(action, data);
-    }
-
-    return data;
-  } catch (err) {
-    console.warn(`API ${action} failed, falling back to cache:`, err);
-    // ── Offline fallback: use memory cache ──────────
-    if (action === 'settings') {
-      return Object.assign({}, DEFAULT_SETTINGS, lsGet('settings') || {});
-    }
-    const cached = lsGet(action);
-    if (Array.isArray(cached)) return cached;
-    return method === 'GET' ? [] : null;
-  }
-}
 
 function pickRandom(arr) {
   return arr[Math.floor(Math.random() * arr.length)];
 }
 
-function fillTemplate(str, vars = {}) {
-  return str.replace(/\{(\w+)\}/g, (_, k) => vars[k] || State.userName || 'Sir');
+function fillTemplate(tpl, vars) {
+  return tpl.replace(/\{(\w+)\}/g, (_, k) => vars[k] ?? '');
 }
 
 function timeOfDay() {
   const h = new Date().getHours();
   if (h < 12) return 'morning';
   if (h < 17) return 'afternoon';
-  return 'evening';
+  if (h < 21) return 'evening';
+  return 'night';
 }
 
-function formatDateTime(dateStr) {
-  if (!dateStr) return '';
-  try {
-    const d = new Date(dateStr.endsWith('Z') ? dateStr : dateStr + 'Z');
-    return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) + ' ' +
-           d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
-  } catch { return dateStr; }
+function formatDate(iso) {
+  if (!iso) return 'N/A';
+  const d = new Date(iso);
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
-function escHtml(str) {
-  const d = document.createElement('div');
-  d.textContent = str || '';
-  return d.innerHTML;
+function formatDateTime(iso) {
+  if (!iso) return 'N/A';
+  const d = new Date(iso);
+  return d.toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
 }
 
-// ═══════════════════════════════════════════════════════
-//  AUDIO ENGINE — Web Audio API tones
-// ═══════════════════════════════════════════════════════
-function initAudio() {
-  try {
-    State.audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-  } catch (e) {
-    console.log('Web Audio API not available');
-  }
+function escapeHtml(str) {
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
 }
 
-function playTone(freq = 880, duration = 80, type = 'sine', vol = 0.08) {
-  if (!State.audioCtx) return;
-  try {
-    const osc = State.audioCtx.createOscillator();
-    const gain = State.audioCtx.createGain();
-    osc.connect(gain);
-    gain.connect(State.audioCtx.destination);
-    osc.type = type;
-    osc.frequency.setValueAtTime(freq, State.audioCtx.currentTime);
-    gain.gain.setValueAtTime(vol, State.audioCtx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.001, State.audioCtx.currentTime + duration / 1000);
-    osc.start();
-    osc.stop(State.audioCtx.currentTime + duration / 1000);
-  } catch(e) {}
-}
-
-function playClickSound() { playTone(1200, 40, 'square', 0.04); }
-function playSuccessSound() {
-  playTone(660, 80, 'sine', 0.06);
-  setTimeout(() => playTone(880, 80, 'sine', 0.05), 100);
-  setTimeout(() => playTone(1100, 120, 'sine', 0.04), 200);
-}
-function playErrorSound() { playTone(220, 200, 'sawtooth', 0.05); }
-function playNavSound() { playTone(660, 50, 'sine', 0.04); }
-function playVoiceStartSound() {
-  playTone(880, 60, 'sine', 0.06);
-  setTimeout(() => playTone(1100, 80, 'sine', 0.05), 80);
+function slugify(str) {
+  return str.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
 }
 
 // ═══════════════════════════════════════════════════════
 //  TOAST NOTIFICATIONS
 // ═══════════════════════════════════════════════════════
-function showToast(msg, duration = 3500) {
-  const container = $('toast-container');
+
+function showToast(message, type = 'info', duration = 4000) {
+  const container = UI.toastContainer();
+  if (!container) return;
   const toast = document.createElement('div');
-  toast.className = 'toast';
-  toast.textContent = msg;
+  toast.className = `toast toast-${type}`;
+  const icons = { success: '✓', error: '✕', warning: '⚠', info: 'ℹ' };
+  toast.innerHTML = `<span class="toast-icon">${icons[type] || 'ℹ'}</span><span class="toast-message">${escapeHtml(message)}</span>`;
   container.appendChild(toast);
+  requestAnimationFrame(() => toast.classList.add('toast-visible'));
   setTimeout(() => {
-    toast.classList.add('out');
-    setTimeout(() => toast.remove(), 350);
+    toast.classList.remove('toast-visible');
+    setTimeout(() => toast.remove(), 400);
   }, duration);
 }
 
 // ═══════════════════════════════════════════════════════
-//  CLOCK & GREETING
+//  MODAL
 // ═══════════════════════════════════════════════════════
-function startClock() {
-  function update() {
-    const now = new Date();
-    const timeStr = now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-    const dateStr = now.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
-    const el = $('live-clock');
-    if (el) el.textContent = `${dateStr}  ${timeStr}`;
-  }
-  update();
-  setInterval(update, 1000);
-}
 
-function updateGreeting() {
-  const greet = $('greeting-text');
-  if (greet) {
-    const tod = timeOfDay();
-    greet.textContent = `Good ${tod}, ${State.userName}. All systems operational.`;
-  }
-  const arcLabel = $('arc-state-label');
-  if (arcLabel && !State.isListening) {
-    arcLabel.textContent = 'STANDBY — CLICK TO ACTIVATE VOICE';
-  }
+function showModal(title, bodyHtml, onConfirm = null) {
+  const overlay = UI.modalOverlay();
+  if (!overlay) return;
+  UI.modalTitle().textContent = title;
+  UI.modalBody().innerHTML = bodyHtml;
+  overlay.classList.add('active');
+  const confirmBtn = UI.modalConfirm();
+  const cancelBtn  = UI.modalCancel();
+  const close = () => overlay.classList.remove('active');
+  confirmBtn.onclick = () => { close(); if (onConfirm) onConfirm(); };
+  cancelBtn.onclick  = close;
+  overlay.onclick    = (e) => { if (e.target === overlay) close(); };
 }
 
 // ═══════════════════════════════════════════════════════
-//  DIAGNOSTICS ANIMATION
+//  THEME
 // ═══════════════════════════════════════════════════════
-function animateDiagnostics() {
-  function jitter(base, range) {
-    return Math.min(99, Math.max(1, base + (Math.random() - 0.5) * range));
-  }
-  let cpu = 45, mem = 62, net = 28, ai = 78;
-  setInterval(() => {
-    cpu = jitter(cpu, 15);
-    mem = jitter(mem, 8);
-    net = jitter(net, 20);
-    ai  = jitter(ai, 12);
-    const set = (id, val) => {
-      const fill = $(id);
-      const valEl = $(id + '-val');
-      if (fill) fill.style.width = val.toFixed(0) + '%';
-      if (valEl) valEl.textContent = val.toFixed(0) + '%';
-    };
-    set('diag-cpu', cpu);
-    set('diag-mem', mem);
-    set('diag-net', net);
-    set('diag-ai', ai);
-  }, 2500);
+
+function initTheme() {
+  const saved = localStorage.getItem('jarvis_theme') || 'dark';
+  applyTheme(saved);
+}
+
+function applyTheme(theme) {
+  State.theme = theme;
+  document.documentElement.setAttribute('data-theme', theme);
+  localStorage.setItem('jarvis_theme', theme);
+  const btn = UI.themeToggleBtn();
+  if (btn) btn.textContent = theme === 'dark' ? '☀' : '☾';
+}
+
+function toggleTheme() {
+  applyTheme(State.theme === 'dark' ? 'light' : 'dark');
 }
 
 // ═══════════════════════════════════════════════════════
-//  ROUTING — View Navigation
+//  API
 // ═══════════════════════════════════════════════════════
-function navigate(viewName) {
-  if (!viewName) return;
-  playNavSound();
 
-  // Deactivate all views
-  $$('.view').forEach(v => v.classList.remove('active'));
-  $$('.nav-item').forEach(n => n.classList.remove('active'));
-  $$('.mobile-nav-btn').forEach(n => n.classList.remove('active'));
+async function loadApiConfig() {
+  try {
+    const res = await fetch('api-config.json?_=' + Date.now());
+    if (!res.ok) throw new Error('not found');
+    const cfg = await res.json();
+    if (cfg.api_url) {
+      State.apiEndpoint = cfg.api_url;
+      console.log('[JARVIS] API endpoint loaded from config:', State.apiEndpoint);
+      return true;
+    }
+  } catch (e) {
+    console.warn('[JARVIS] Could not load api-config.json:', e.message);
+  }
+  return false;
+}
 
-  // Activate target view
-  const view = $('view-' + viewName);
-  if (view) view.classList.add('active');
-
-  // Update nav
-  $$(`[data-view="${viewName}"]`).forEach(el => el.classList.add('active'));
-
-  // Update quick-action bottom bar for desktop
-  const isMobile = window.innerWidth <= 600;
-  $$('.mobile-nav-btn').forEach(b => {
-    b.style.display = isMobile ? 'flex' : 'none';
+async function callApi(action, payload = {}) {
+  if (!State.apiEndpoint) {
+    throw new Error('API endpoint not configured');
+  }
+  const body = { action, ...payload };
+  const res = await fetch(State.apiEndpoint, {
+    method:  'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body:    JSON.stringify(body),
   });
-  const qp = $('quick-project-btn');
-  const qr = $('quick-research-btn');
-  const qm = $('quick-memory-btn');
-  if (!isMobile) {
-    [qp, qr, qm].forEach(el => { if (el) el.style.display = 'inline-flex'; });
+  if (!res.ok) {
+    const txt = await res.text();
+    throw new Error(`API error ${res.status}: ${txt}`);
   }
-
-  State.currentView = viewName;
-  window.location.hash = viewName;
-
-  // Load view-specific data
-  if (viewName === 'dashboard') loadDashboard();
-  else if (viewName === 'projects') loadProjects();
-  else if (viewName === 'chat') loadChat();
-  else if (viewName === 'operations') loadOperations();
-  else if (viewName === 'research') loadResearch();
-  else if (viewName === 'schedule') loadSchedule();
-  else if (viewName === 'proposals') loadProposals();
-  else if (viewName === 'artifacts') loadArtifacts();
-  else if (viewName === 'memory') loadMemory();
-  else if (viewName === 'briefings') loadBriefings();
-  else if (viewName === 'settings') loadSettings();
+  return res.json();
 }
 
 // ═══════════════════════════════════════════════════════
-//  KPI COUNTER ANIMATION
+//  STATUS
 // ═══════════════════════════════════════════════════════
-function animateCount(el, target) {
-  if (!el) return;
-  const start = parseInt(el.textContent) || 0;
-  const duration = 600;
-  const startTime = performance.now();
-  function step(now) {
-    const elapsed = now - startTime;
-    const progress = Math.min(elapsed / duration, 1);
-    const ease = 1 - Math.pow(1 - progress, 3);
-    el.textContent = Math.round(start + (target - start) * ease);
-    if (progress < 1) requestAnimationFrame(step);
-  }
-  requestAnimationFrame(step);
+
+function setStatus(state) {
+  const dot  = UI.statusDot();
+  const text = UI.statusText();
+  if (!dot || !text) return;
+  const states = {
+    online:     { cls: 'online',     label: 'Online'     },
+    thinking:   { cls: 'thinking',   label: 'Thinking'   },
+    processing: { cls: 'processing', label: 'Processing' },
+    offline:    { cls: 'offline',    label: 'Offline'    },
+    error:      { cls: 'error',      label: 'Error'      },
+  };
+  const s = states[state] || states.online;
+  dot.className  = `status-dot ${s.cls}`;
+  text.textContent = s.label;
+}
+
+// ═══════════════════════════════════════════════════════
+//  NAVIGATION
+// ═══════════════════════════════════════════════════════
+
+function navigate(view) {
+  State.currentView = view;
+  window.location.hash = view;
+  UI.navLinks().forEach(link => {
+    link.classList.toggle('active', link.dataset.view === view);
+  });
+  renderView(view);
+}
+
+// ═══════════════════════════════════════════════════════
+//  VIEW ROUTER
+// ═══════════════════════════════════════════════════════
+
+function renderView(view) {
+  const content = UI.mainContent();
+  if (!content) return;
+  content.innerHTML = '<div class="loading-spinner"><div class="spinner"></div><p>Loading...</p></div>';
+  const renderers = {
+    dashboard:  renderDashboard,
+    projects:   renderProjects,
+    tasks:      renderTasks,
+    research:   renderResearch,
+    memory:     renderMemory,
+    briefings:  renderBriefings,
+    settings:   renderSettings,
+  };
+  const fn = renderers[view];
+  if (fn) fn();
+  else content.innerHTML = `<div class="error-state"><h2>View not found</h2><p>${escapeHtml(view)}</p></div>`;
 }
 
 // ═══════════════════════════════════════════════════════
 //  DASHBOARD
 // ═══════════════════════════════════════════════════════
-async function loadDashboard() {
-  const [projects, memories, operations, convos, scheduledTasks, proposals] = await Promise.all([
-    api('projects'),
-    api('memories'),
-    api('operations'),
-    api('conversations'),
-    api('scheduled_tasks'),
-    api('task_proposals'),
-  ]);
 
-  const activeProjects = (projects || []).filter(p => p.status.toLowerCase() === 'active').length;
-  const totalMemories = (memories || []).length;
-  const totalOps = (operations || []).length;
-  const totalConvos = (convos || []).length;
-  const pendingScheduled = (scheduledTasks || []).filter(t => t.status !== 'completed').length;
-  const pendingProposals = (proposals || []).filter(p => p.status === 'pending_approval').length;
+async function renderDashboard() {
+  const content = UI.mainContent();
+  try {
+    const [projectsRes, tasksRes, memoriesRes] = await Promise.all([
+      callApi('list_projects'),
+      callApi('list_tasks'),
+      callApi('list_memories'),
+    ]);
+    State.data.projects  = projectsRes.projects  || [];
+    State.data.tasks     = tasksRes.tasks         || [];
+    State.data.memories  = memoriesRes.memories   || [];
 
-  animateCount($('kpi-projects'), activeProjects);
-  animateCount($('kpi-memories'), totalMemories);
-  animateCount($('kpi-operations'), totalOps);
-  animateCount($('kpi-convos'), totalConvos);
-  animateCount($('kpi-schedule-count'), pendingScheduled);
-  animateCount($('kpi-proposals-pending'), pendingProposals);
+    const activeProjects = State.data.projects.filter(p => p.status === 'active').length;
+    const pendingTasks   = State.data.tasks.filter(t => t.status === 'pending').length;
+    const doneTasks      = State.data.tasks.filter(t => t.status === 'done').length;
+    const totalTasks     = State.data.tasks.length;
+    const completionPct  = totalTasks ? Math.round((doneTasks / totalTasks) * 100) : 0;
 
-  // Recent activity
-  const activityEl = $('recent-activity');
-  if (activityEl) {
-    const recent = [...(convos || [])].slice(0, 5);
-    if (recent.length === 0) {
-      activityEl.innerHTML = '<div style="color:var(--text-faint);font-family:var(--font-mono);font-size:var(--text-xs)">No recent activity</div>';
-    } else {
-      activityEl.innerHTML = recent.map(c => `
-        <div style="display:flex;gap:var(--sp-3);align-items:flex-start;padding:var(--sp-2) 0;border-bottom:1px solid var(--border-dim)">
-          <span style="font-family:var(--font-mono);font-size:var(--text-xs);color:var(--accent-cyan);width:40px;flex-shrink:0">${c.role === 'user' ? 'YOU' : 'J.A.R.'}</span>
-          <span style="font-size:var(--text-xs);color:var(--text-muted);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(c.content)}</span>
-        </div>
-      `).join('');
-    }
-  }
-
-  // Ops preview
-  const opsEl = $('ops-preview');
-  if (opsEl) {
-    const activeOps = (operations || []).filter(o => o.status !== 'complete').slice(0, 3);
-    if (activeOps.length === 0) {
-      opsEl.innerHTML = '<div style="color:var(--text-faint);font-family:var(--font-mono);font-size:var(--text-xs)">No active operations</div>';
-    } else {
-      opsEl.innerHTML = activeOps.map(op => `
-        <div class="operation-item ${op.status}">
-          <div class="op-status-icon ${op.status}"></div>
-          <div class="op-name">${escHtml(op.name)}</div>
-          <div class="op-progress-bar"><div class="op-progress-fill" style="width:${op.progress}%"></div></div>
-          <div class="op-percent">${op.progress}%</div>
-        </div>
-      `).join('');
-    }
-  }
-}
-
-// ═══════════════════════════════════════════════════════
-//  CHAT
-// ═══════════════════════════════════════════════════════
-async function loadChat() {
-  const convos = await api('conversations', 'GET', null, 'limit=100') || [];
-  const container = $('chat-messages');
-  if (!container) return;
-
-  const sorted = [...convos].reverse(); // oldest first
-  if (sorted.length === 0) {
-    container.innerHTML = `
-      <div class="chat-message jarvis">
-        <div class="chat-avatar">J</div>
-        <div>
-          <div class="chat-bubble">Good ${timeOfDay()}, ${State.userName}. I'm JARVIS — your personal AI interface. How may I assist you today?</div>
-          <div class="chat-time">JARVIS — Just now</div>
-        </div>
-      </div>`;
-  } else {
-    container.innerHTML = sorted.map(renderMessage).join('');
-  }
-  container.scrollTop = container.scrollHeight;
-}
-
-function renderMessage(msg) {
-  const isJarvis = msg.role === 'jarvis' || msg.role === 'assistant';
-  const side = isJarvis ? 'jarvis' : 'user';
-  const avatar = isJarvis ? 'J' : (State.userName[0] || 'U');
-  const time = formatDateTime(msg.created_at);
-  const sentiment = msg.sentiment ? getSentimentIndicator(msg.sentiment) : '';
-  const source = msg.source ? `<span style="font-family:var(--font-mono);font-size:9px;padding:1px 5px;border-radius:3px;background:rgba(0,212,255,0.08);color:var(--text-faint);margin-left:4px">${msg.source.toUpperCase()}</span>` : '';
-  return `
-    <div class="chat-message ${side}">
-      <div class="chat-avatar">${avatar}</div>
-      <div>
-        <div class="chat-bubble">${escHtml(msg.content)}</div>
-        <div class="chat-time">${isJarvis ? 'JARVIS' : State.userName} — ${time}${sentiment}${source}</div>
+    content.innerHTML = `
+      <div class="view-header">
+        <h1 class="view-title">Mission Control</h1>
+        <p class="view-subtitle">Operational Overview — ${new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}</p>
       </div>
-    </div>`;
-}
 
-function appendChatMessage(role, content) {
-  const container = $('chat-messages');
-  if (!container) return;
-  const msg = { role, content, created_at: new Date().toISOString() };
-  const div = document.createElement('div');
-  div.innerHTML = renderMessage(msg);
-  container.appendChild(div.firstElementChild);
-  container.scrollTop = container.scrollHeight;
-}
-
-function showTypingIndicator() {
-  const container = $('chat-messages');
-  if (!container) return null;
-  const div = document.createElement('div');
-  div.className = 'chat-message jarvis';
-  div.id = 'typing-indicator';
-  div.innerHTML = `
-    <div class="chat-avatar">J</div>
-    <div class="chat-bubble">
-      <div class="typing-indicator">
-        <div class="typing-dot"></div>
-        <div class="typing-dot"></div>
-        <div class="typing-dot"></div>
+      <div class="stats-grid">
+        <div class="stat-card" onclick="navigate('projects')">
+          <div class="stat-icon">◈</div>
+          <div class="stat-value">${activeProjects}</div>
+          <div class="stat-label">Active Projects</div>
+        </div>
+        <div class="stat-card" onclick="navigate('tasks')">
+          <div class="stat-icon">◉</div>
+          <div class="stat-value">${pendingTasks}</div>
+          <div class="stat-label">Pending Tasks</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-icon">◎</div>
+          <div class="stat-value">${completionPct}%</div>
+          <div class="stat-label">Completion Rate</div>
+        </div>
+        <div class="stat-card" onclick="navigate('memory')">
+          <div class="stat-icon">◇</div>
+          <div class="stat-value">${State.data.memories.length}</div>
+          <div class="stat-label">Memory Entries</div>
+        </div>
       </div>
-    </div>`;
-  container.appendChild(div);
-  container.scrollTop = container.scrollHeight;
-  return div;
-}
 
-function removeTypingIndicator() {
-  const el = $('typing-indicator');
-  if (el) el.remove();
-}
+      <div class="dashboard-grid">
+        <div class="card">
+          <div class="card-header">
+            <h2 class="card-title">Recent Projects</h2>
+            <button class="btn btn-sm" onclick="navigate('projects')">View All</button>
+          </div>
+          <div class="card-body">
+            ${State.data.projects.length === 0
+              ? '<p class="empty-state">No projects yet. Start a new project with JARVIS.</p>'
+              : State.data.projects.slice(0, 3).map(p => `
+                <div class="list-item">
+                  <div class="list-item-main">
+                    <span class="list-item-title">${escapeHtml(p.name)}</span>
+                    <span class="badge badge-${p.status}">${escapeHtml(p.status)}</span>
+                  </div>
+                  <div class="list-item-sub">${escapeHtml(p.description || 'No description')}</div>
+                </div>`).join('')
+            }
+          </div>
+        </div>
 
-async function typewriterEffect(el, text, speed = 18) {
-  el.textContent = '';
-  for (let i = 0; i < text.length; i++) {
-    el.textContent += text[i];
-    await new Promise(r => setTimeout(r, speed));
-  }
-}
-
-async function sendUserMessage(text) {
-  _unlockAudio();
-  if (!text.trim()) return;
-  playClickSound();
-
-  // Show user message
-  if (State.currentView === 'chat') appendChatMessage('user', text);
-
-  // Update arc transcript
-  const transcript = $('arc-transcript');
-  if (transcript) transcript.textContent = text;
-
-  // Save to backend
-  api('conversations', 'POST', { role: 'user', content: text });
-
-  // ── BRAIN INTEGRATION ──
-  // Pass to JarvisBrain for NLU processing (autonomous decision-making)
-  const brainHelpers = {
-    navigate, loadProjects, loadDashboard, loadOperations, loadResearch,
-    loadSchedule, loadMemory, renderKanban, playSuccessSound, showToast, openModal,
-    State, CinematicVFX: window.CinematicVFX
-  };
-
-  let brainResult;
-  try {
-    brainResult = await JarvisBrain.process(text, api, brainHelpers);
+        <div class="card">
+          <div class="card-header">
+            <h2 class="card-title">Active Tasks</h2>
+            <button class="btn btn-sm" onclick="navigate('tasks')">View All</button>
+          </div>
+          <div class="card-body">
+            ${State.data.tasks.filter(t => t.status === 'pending').length === 0
+              ? '<p class="empty-state">No pending tasks. Well done.</p>'
+              : State.data.tasks.filter(t => t.status === 'pending').slice(0, 4).map(t => `
+                <div class="list-item">
+                  <div class="list-item-main">
+                    <span class="list-item-title">${escapeHtml(t.name)}</span>
+                    <span class="badge badge-${t.priority || 'medium'}">${escapeHtml(t.priority || 'medium')}</span>
+                  </div>
+                  <div class="list-item-sub">${escapeHtml(t.project || 'General')}</div>
+                </div>`).join('')
+            }
+          </div>
+        </div>
+      </div>
+    `;
   } catch (err) {
-    console.warn('JarvisBrain error, falling back:', err);
-    brainResult = { response: `Processing error detected, ${State.userName}. My apologies — could you rephrase that?`, intent: 'error', actionTaken: false };
-  }
-
-  await deliverJarvisResponse(brainResult, text);
-}
-
-// processCommand() — LEGACY: replaced by JarvisBrain.process()
-// Kept as reference. All intent detection now handled by brain.js.
-async function processCommand(input) {
-  // This function is no longer called. JarvisBrain handles all input.
-  return `I'm processing that, ${State.userName}.`;
-}
-
-async function deliverJarvisResponse(brainResult, userInput) {
-  const responseText = typeof brainResult === 'string' ? brainResult : brainResult.response;
-  const intent = brainResult?.intent || 'casual_chat';
-  const actionTaken = brainResult?.actionTaken || false;
-
-  // Show typing indicator in chat
-  let typingEl = null;
-  if (State.currentView === 'chat') {
-    typingEl = showTypingIndicator();
-  }
-
-  // Cinematic VFX based on brain intent (only if action was taken OR it's a substantive intent)
-  if (window.CinematicVFX && !actionTaken) {
-    // Brain already triggers VFX during executeAction for actionTaken intents.
-    // For non-action intents, show a processing cinematic for longer responses.
-    if (responseText.length > 100 && ['casual_chat', 'status_check', 'help'].includes(intent)) {
-      CinematicVFX.processing('PROCESSING');
-    }
-  }
-
-  // Simulate processing delay (feels more intelligent)
-  const delay = 600 + Math.random() * 800;
-  await new Promise(r => setTimeout(r, delay));
-
-  if (typingEl) typingEl.remove();
-
-  // Save JARVIS response to backend
-  api('conversations', 'POST', { role: 'jarvis', content: responseText, topic: userInput.slice(0, 60) });
-
-  // Append to chat if visible
-  if (State.currentView === 'chat') {
-    const container = $('chat-messages');
-    const div = document.createElement('div');
-    div.className = 'chat-message jarvis';
-
-    // Build optional action tag (e.g., "PROJECT CREATED" / "MEMORY INDEXED")
-    let actionTag = '';
-    if (actionTaken) {
-      const tagLabels = {
-        create_project: 'PROJECT INITIALIZED',
-        save_memory: 'MEMORY INDEXED',
-        research: 'RESEARCH INITIATED',
-        create_task: 'TASK CREATED',
-        launch_operation: 'OPERATION QUEUED',
-        navigate: 'NAVIGATING',
-        status_check: 'DIAGNOSTICS RUN'
-      };
-      const label = tagLabels[intent] || 'ACTION EXECUTED';
-      actionTag = `<span class="chat-action-tag">${label}</span>`;
-    }
-
-    div.innerHTML = `
-      <div class="chat-avatar">J</div>
-      <div>
-        ${actionTag}
-        <div class="chat-bubble" id="jarvis-typing-bubble"></div>
-        <div class="chat-time">JARVIS — Just now</div>
+    content.innerHTML = `
+      <div class="error-state">
+        <h2>Systems Offline</h2>
+        <p>${escapeHtml(err.message)}</p>
+        <button class="btn btn-primary" onclick="renderDashboard()">Retry</button>
       </div>`;
-    container.appendChild(div);
-    container.scrollTop = container.scrollHeight;
-    const bubble = div.querySelector('#jarvis-typing-bubble');
-    if (bubble) await typewriterEffect(bubble, responseText);
+    setStatus('error');
   }
-
-  // Speak the response
-  speakText(responseText);
-
-  // Update arc transcript
-  const transcript = $('arc-transcript');
-  if (transcript) {
-    transcript.textContent = responseText.slice(0, 80) + (responseText.length > 80 ? '...' : '');
-  }
-}
-
-// ═══════════════════════════════════════════════════════
-//  VOICE SYSTEM
-// ═══════════════════════════════════════════════════════
-function initVoice() {
-  // Speech Synthesis — load voices
-  if ('speechSynthesis' in window) {
-    const loadVoices = () => {
-      State.availableVoices = window.speechSynthesis.getVoices();
-      // Fallback chain: Google UK Male → en-GB male → any en-GB → any en
-      const voice =
-        State.availableVoices.find(v => v.name === 'Google UK English Male') ||
-        State.availableVoices.find(v => v.lang === 'en-GB' && v.name.toLowerCase().includes('male')) ||
-        State.availableVoices.find(v => v.lang === 'en-GB') ||
-        State.availableVoices.find(v => v.lang.startsWith('en-GB')) ||
-        State.availableVoices.find(v => v.lang.startsWith('en'));
-      // Only override if user hasn't manually selected
-      if (!State.voiceSettings.voiceURI) State.selectedVoice = voice || null;
-      populateVoiceSelector();
-    };
-    loadVoices();
-    window.speechSynthesis.onvoiceschanged = loadVoices;
-  }
-
-  // Speech Recognition
-  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-  if (SR) {
-    State.recognition = new SR();
-    State.recognition.continuous = false;
-    State.recognition.interimResults = true;
-    State.recognition.lang = 'en-GB';
-    State.recognition.maxAlternatives = 1;
-
-    State.recognition.onresult = (e) => {
-      const transcript = Array.from(e.results)
-        .map(r => r[0].transcript).join('');
-      const arcTranscript = $('arc-transcript');
-      if (arcTranscript) arcTranscript.textContent = transcript;
-      if (e.results[e.results.length - 1].isFinal) {
-        sendUserMessage(transcript);
-      }
-    };
-
-    State.recognition.onstart = () => {
-      State.isListening = true;
-      setArcState('listening');
-      playVoiceStartSound();
-      startAudioVisualization();
-    };
-
-    State.recognition.onend = () => {
-      State.isListening = false;
-      const micBtn = $('mic-btn');
-      const arc = $('arc-reactor');
-      if (micBtn) { micBtn.classList.remove('active'); micBtn.setAttribute('aria-pressed', 'false'); }
-      if (arc) arc.setAttribute('aria-pressed', 'false');
-      $('voice-status-item') && ($('voice-status-item').style.display = 'none');
-      stopAudioVisualization();
-      if (!State.isSpeaking) {
-        setArcState('idle');
-        // Continuous mode: restart listening immediately
-        if (State.continuousMode && !State.isSpeaking) {
-          setTimeout(() => {
-            if (!State.isListening && !State.isSpeaking) {
-              try { State.recognition.start(); } catch(e) {}
-            }
-          }, 800);
-        }
-        // Wake word mode: go back to listening for "Hey JARVIS"
-        else if (!State.continuousMode && !State.wakeWordActive) {
-          const wwToggle = $('setting-wakeword');
-          if (wwToggle && wwToggle.checked) {
-            setTimeout(() => startWakeWordDetection(), 500);
-          }
-        }
-      }
-    };
-
-    State.recognition.onerror = (e) => {
-      // Suppress spammy errors — only show actionable ones once
-      if (e.error === 'not-allowed') {
-        if (!State._voicePermDenied) {
-          State._voicePermDenied = true;
-          showToast('Microphone blocked. Tap the lock icon in your browser address bar to allow mic access, then reload.', 5000);
-        }
-      } else if (e.error !== 'no-speech' && e.error !== 'aborted' && e.error !== 'network') {
-        showToast(`Voice error: ${e.error}`, 2500);
-      }
-      State.isListening = false;
-      stopAudioVisualization();
-      setArcState('idle');
-    };
-  }
-}
-
-// ── Audio Visualization — real-time waveform around arc reactor ──
-function startAudioVisualization() {
-  if (State.audioVizActive) return;
-  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) return;
-
-  navigator.mediaDevices.getUserMedia({ audio: true, video: false }).then(stream => {
-    if (!State.audioCtx) {
-      try { State.audioCtx = new (window.AudioContext || window.webkitAudioContext)(); } catch(e) { return; }
-    }
-    if (State.audioCtx.state === 'suspended') State.audioCtx.resume();
-
-    State.micSource = State.audioCtx.createMediaStreamSource(stream);
-    State.analyser = State.audioCtx.createAnalyser();
-    State.analyser.fftSize = 256;
-    State.analyser.smoothingTimeConstant = 0.75;
-    State.micSource.connect(State.analyser);
-    State.audioVizActive = true;
-
-    const arc = $('arc-reactor');
-    if (!arc) return;
-    const rect = arc.getBoundingClientRect();
-    const cv = $('audio-viz-canvas');
-    if (!cv) return;
-
-    const size = Math.max(rect.width, rect.height) + 120;
-    cv.width = size;
-    cv.height = size;
-    cv.style.width = size + 'px';
-    cv.style.height = size + 'px';
-    cv.style.left = (rect.left + rect.width / 2 - size / 2) + 'px';
-    cv.style.top = (rect.top + rect.height / 2 - size / 2) + 'px';
-    cv.style.position = 'fixed';
-    cv.classList.add('active');
-
-    const ctx2 = cv.getContext('2d');
-    const bufLen = State.analyser.frequencyBinCount;
-    const dataArr = new Uint8Array(bufLen);
-    const cx2 = size / 2, cy2 = size / 2;
-    const baseR = size / 2 - 18;
-
-    function drawViz() {
-      if (!State.audioVizActive) return;
-      State.analyser.getByteFrequencyData(dataArr);
-      ctx2.clearRect(0, 0, size, size);
-
-      const bars = 64;
-      for (let i = 0; i < bars; i++) {
-        const idx = Math.floor(i / bars * bufLen * 0.7);
-        const val = dataArr[idx] / 255;
-        const angle = (i / bars) * Math.PI * 2 - Math.PI / 2;
-        const r1 = baseR - 2;
-        const r2 = baseR + 4 + val * 28;
-        const alpha = 0.3 + val * 0.7;
-        ctx2.beginPath();
-        ctx2.moveTo(cx2 + Math.cos(angle) * r1, cy2 + Math.sin(angle) * r1);
-        ctx2.lineTo(cx2 + Math.cos(angle) * r2, cy2 + Math.sin(angle) * r2);
-        ctx2.strokeStyle = `rgba(0,212,255,${alpha})`;
-        ctx2.lineWidth = 2;
-        ctx2.stroke();
-      }
-      requestAnimationFrame(drawViz);
-    }
-    drawViz();
-
-    // Stop stream tracks when visualization stops
-    State._vizStream = stream;
-  }).catch(() => {
-    // Microphone not accessible for visualization — silent fail
-  });
-}
-
-function stopAudioVisualization() {
-  State.audioVizActive = false;
-  const cv = $('audio-viz-canvas');
-  if (cv) {
-    cv.classList.remove('active');
-    const ctx2 = cv.getContext('2d');
-    if (ctx2) ctx2.clearRect(0, 0, cv.width, cv.height);
-  }
-  if (State.micSource) { try { State.micSource.disconnect(); } catch(e) {} State.micSource = null; }
-  if (State._vizStream) {
-    State._vizStream.getTracks().forEach(t => t.stop());
-    State._vizStream = null;
-  }
-}
-
-// ── Wake Word Detection ──
-function startWakeWordDetection() {
-  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-  if (!SR || State.wakeWordActive) return;
-
-  const wr = new SR();
-  wr.continuous = true;
-  wr.interimResults = true;
-  wr.lang = 'en-GB';
-  State.wakeRecognition = wr;
-  State.wakeWordActive = true;
-
-  const indicator = $('wake-word-indicator');
-  if (indicator) indicator.style.display = 'flex';
-
-  wr.onresult = (e) => {
-    const text = Array.from(e.results).map(r => r[0].transcript.toLowerCase()).join(' ');
-    if (text.includes('hey jarvis') || text.includes('jarvis')) {
-      wr.stop();
-      State.wakeWordActive = false;
-      if (indicator) indicator.style.display = 'none';
-      // Activate main listening
-      setTimeout(() => {
-        if (!State.isListening && !State.isSpeaking) {
-          toggleListening();
-          speakText('Yes, ' + State.userName + '?');
-        }
-      }, 200);
-    }
-  };
-  wr.onend = () => {
-    // Restart if still in wake word mode
-    if (State.wakeWordActive) {
-      setTimeout(() => { try { wr.start(); } catch(e) {} }, 500);
-    }
-  };
-  wr.onerror = (e) => {
-    if (e.error === 'aborted') return;
-    State.wakeWordActive = false;
-    if (indicator) indicator.style.display = 'none';
-  };
-
-  try { wr.start(); } catch(e) {}
-}
-
-function stopWakeWordDetection() {
-  State.wakeWordActive = false;
-  if (State.wakeRecognition) {
-    try { State.wakeRecognition.stop(); } catch(e) {}
-    State.wakeRecognition = null;
-  }
-  const indicator = $('wake-word-indicator');
-  if (indicator) indicator.style.display = 'none';
-}
-
-function setArcState(state) {
-  const arc = $('arc-reactor');
-  const label = $('arc-state-label');
-  const waveform = $('waveform');
-
-  if (!arc) return;
-  arc.classList.remove('listening', 'speaking');
-
-  if (state === 'listening') {
-    arc.classList.add('listening');
-    if (label) label.textContent = 'LISTENING — SPEAK YOUR COMMAND';
-    if (waveform) waveform.style.display = 'flex';
-  } else if (state === 'speaking') {
-    arc.classList.add('speaking');
-    if (label) label.textContent = 'JARVIS RESPONDING';
-    if (waveform) waveform.style.display = 'flex';
-  } else {
-    if (label) label.textContent = 'STANDBY — CLICK TO ACTIVATE VOICE';
-    if (waveform) waveform.style.display = 'none';
-  }
-}
-
-function toggleListening() {
-  if (!State.recognition) {
-    showToast('Voice recognition not available in this browser. Try Chrome.', 3000);
-    return;
-  }
-  if (State.isListening) {
-    State.recognition.abort();
-    State.isListening = false;
-    setArcState('idle');
-  } else {
-    try {
-      // Resume AudioContext if suspended (requires user gesture)
-      if (State.audioCtx && State.audioCtx.state === 'suspended') {
-        State.audioCtx.resume();
-      }
-      State.recognition.start();
-      $('voice-status-item') && ($('voice-status-item').style.display = 'flex');
-    } catch (e) {
-      showToast('Could not start microphone. Please allow microphone access.', 3000);
-    }
-  }
-  const micBtn = $('mic-btn');
-  const arc = $('arc-reactor');
-  if (micBtn) {
-    micBtn.classList.toggle('active', State.isListening);
-    micBtn.setAttribute('aria-pressed', String(State.isListening));
-  }
-  if (arc) arc.setAttribute('aria-pressed', String(State.isListening));
-}
-
-// ── Speech Queue: JARVIS finishes one utterance before starting next ──
-function speakText(text) {
-  State.speechQueue.push(text);
-  if (!State.isSpeaking) _processSpeechQueue();
-}
-
-function _processSpeechQueue() {
-  if (State.speechQueue.length === 0) return;
-  const text = State.speechQueue.shift();
-
-  // Remove markdown-ish formatting for speech
-  const clean = text.replace(/[•▸\*\_`]/g, '').replace(/\n/g, '. ');
-
-  // Route to ElevenLabs if enabled and configured
-  const elEnabled = State.elevenLabs.enabled && State.elevenLabs.apiKey && State.elevenLabs.voiceId;
-  console.log('[JARVIS TTS] enabled:', State.elevenLabs.enabled, 'apiKey:', !!State.elevenLabs.apiKey, 'voiceId:', !!State.elevenLabs.voiceId, '→ route:', elEnabled ? 'ElevenLabs' : 'BrowserTTS');
-  if (elEnabled) {
-    _speakElevenLabs(clean);
-    return;
-  }
-
-  // Fallback: browser SpeechSynthesis
-  _speakBrowserTTS(clean);
-}
-
-// ── ElevenLabs TTS Engine ──
-async function _speakElevenLabs(text) {
-  State.isSpeaking = true;
-  setArcState('speaking');
-
-  try {
-    const response = await fetch(
-      `https://api.elevenlabs.io/v1/text-to-speech/${State.elevenLabs.voiceId}/stream`,
-      {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'xi-api-key': State.elevenLabs.apiKey,
-        },
-        body: JSON.stringify({
-          text: text,
-          model_id: State.elevenLabs.model,
-          voice_settings: {
-            stability: State.elevenLabs.stability,
-            similarity_boost: State.elevenLabs.similarityBoost,
-            style: State.elevenLabs.style,
-            use_speaker_boost: true,
-          },
-        }),
-      }
-    );
-
-    if (!response.ok) {
-      console.warn('ElevenLabs API error:', response.status, '— falling back to browser TTS');
-      _speakBrowserTTS(text);
-      return;
-    }
-
-    // Stream audio response
-    const audioBlob = await response.blob();
-    const audioUrl = URL.createObjectURL(audioBlob);
-
-    // Always create a fresh audio element for each TTS response
-    // (Reusing a primed element fails on mobile Safari after first use)
-    const audio = new Audio(audioUrl);
-    audio.volume = State.voiceSettings.volume;
-    State.elevenLabsAudio = audio;
-
-    audio.onended = () => {
-      State.isSpeaking = false;
-      State.elevenLabsAudio = null;
-      URL.revokeObjectURL(audioUrl);
-      if (State.speechQueue.length > 0) {
-        _processSpeechQueue();
-      } else {
-        if (!State.isListening) {
-          setArcState('idle');
-          // Continuous mode: auto-restart listening after JARVIS finishes speaking
-          if (State.continuousMode && State.recognition) {
-            setTimeout(() => {
-              if (!State.isListening && !State.isSpeaking) {
-                try { State.recognition.start(); } catch(e) {}
-              }
-            }, 800);
-          }
-          // Wake word: restart detection so user can say "Hey JARVIS" again
-          else if (!State.continuousMode && !State.wakeWordActive) {
-            const wwToggle = document.getElementById('setting-wakeword');
-            if (wwToggle && wwToggle.checked) {
-              setTimeout(() => startWakeWordDetection(), 500);
-            }
-          }
-        }
-      }
-    };
-
-    audio.onerror = (err) => {
-      console.warn('ElevenLabs audio playback error:', err);
-      State.isSpeaking = false;
-      State.elevenLabsAudio = null;
-      URL.revokeObjectURL(audioUrl);
-      if (!State.isListening) setArcState('idle');
-      if (State.speechQueue.length > 0) setTimeout(_processSpeechQueue, 200);
-    };
-
-    try {
-      await audio.play();
-    } catch (playErr) {
-      console.warn('Audio play blocked:', playErr);
-      // On mobile, autoplay may be blocked — try via the primed element
-      if (_elAudio) {
-        _elAudio.src = audioUrl;
-        _elAudio.volume = State.voiceSettings.volume;
-        State.elevenLabsAudio = _elAudio;
-        _elAudio.onended = audio.onended;
-        _elAudio.onerror = audio.onerror;
-        try { await _elAudio.play(); } catch(e2) {
-          console.warn('All audio play attempts failed, falling back to browser TTS');
-          _speakBrowserTTS(text);
-        }
-      } else {
-        console.warn('No primed audio element, falling back to browser TTS');
-        _speakBrowserTTS(text);
-      }
-    }
-  } catch (err) {
-    console.warn('ElevenLabs fetch error:', err, '— falling back to browser TTS');
-    _speakBrowserTTS(text);
-  }
-}
-
-// ── Browser SpeechSynthesis Fallback ──
-function _speakBrowserTTS(text) {
-  if (!State.synthesis) {
-    State.isSpeaking = false;
-    if (State.speechQueue.length > 0) _processSpeechQueue();
-    return;
-  }
-
-  const utt = new SpeechSynthesisUtterance(text);
-  if (State.selectedVoice) utt.voice = State.selectedVoice;
-  utt.rate = State.voiceSettings.rate;
-  utt.pitch = State.voiceSettings.pitch;
-  utt.volume = State.voiceSettings.volume;
-  utt.lang = 'en-GB';
-
-  utt.onstart = () => {
-    State.isSpeaking = true;
-    setArcState('speaking');
-  };
-  utt.onend = () => {
-    State.isSpeaking = false;
-    if (State.speechQueue.length > 0) {
-      _processSpeechQueue();
-    } else {
-      if (!State.isListening) {
-        setArcState('idle');
-        if (State.continuousMode && State.recognition) {
-          setTimeout(() => {
-            if (!State.isListening && !State.isSpeaking) {
-              try { State.recognition.start(); } catch(e) {}
-            }
-          }, 800);
-        }
-        else if (!State.continuousMode && !State.wakeWordActive) {
-          const wwToggle = document.getElementById('setting-wakeword');
-          if (wwToggle && wwToggle.checked) {
-            setTimeout(() => startWakeWordDetection(), 500);
-          }
-        }
-      }
-    }
-  };
-  utt.onerror = () => {
-    State.isSpeaking = false;
-    if (!State.isListening) setArcState('idle');
-    if (State.speechQueue.length > 0) setTimeout(_processSpeechQueue, 200);
-  };
-
-  State.synthesis.speak(utt);
-}
-
-// ── ElevenLabs Status & Test ──
-function _updateElStatusDot() {
-  const dot = $('el-status-dot');
-  if (!dot) return;
-  dot.className = 'el-status-dot';
-  if (State.elevenLabs.enabled && State.elevenLabs.apiKey && State.elevenLabs.voiceId) {
-    dot.classList.add('connected');
-  }
-}
-
-async function testElevenLabsVoice() {
-  const dot = $('el-status-dot');
-  const statusText = $('el-test-status');
-  if (dot) { dot.className = 'el-status-dot testing'; }
-  if (statusText) statusText.textContent = 'Testing connection...';
-
-  // Read current values from fields (even if not saved yet)
-  const apiKey = $('setting-el-apikey')?.value || State.elevenLabs.apiKey;
-  const voiceId = $('setting-el-voiceid')?.value || State.elevenLabs.voiceId;
-  const model = $('setting-el-model')?.value || State.elevenLabs.model;
-
-  if (!apiKey || !voiceId) {
-    if (dot) dot.className = 'el-status-dot error';
-    if (statusText) statusText.textContent = 'Missing API Key or Voice ID';
-    return;
-  }
-
-  try {
-    const response = await fetch(
-      `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}/stream`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'xi-api-key': apiKey },
-        body: JSON.stringify({
-          text: 'Systems online. All diagnostics nominal. At your service, Sir.',
-          model_id: model,
-          voice_settings: {
-            stability: parseFloat($('setting-el-stability')?.value || '0.5'),
-            similarity_boost: parseFloat($('setting-el-similarity')?.value || '0.75'),
-            style: parseFloat($('setting-el-style')?.value || '0.4'),
-            use_speaker_boost: true,
-          },
-        }),
-      }
-    );
-
-    if (!response.ok) {
-      const errText = await response.text();
-      console.warn('ElevenLabs test error:', response.status, errText);
-      if (dot) dot.className = 'el-status-dot error';
-      if (statusText) statusText.textContent = `Error ${response.status}: Check your API key and Voice ID`;
-      return;
-    }
-
-    const audioBlob = await response.blob();
-    const audioUrl = URL.createObjectURL(audioBlob);
-    const audio = new Audio(audioUrl);
-    audio.volume = State.voiceSettings.volume;
-    audio.onended = () => URL.revokeObjectURL(audioUrl);
-    await audio.play();
-
-    if (dot) dot.className = 'el-status-dot connected';
-    if (statusText) statusText.textContent = 'Connected — voice verified';
-  } catch (err) {
-    console.warn('ElevenLabs test fetch error:', err);
-    if (dot) dot.className = 'el-status-dot error';
-    if (statusText) statusText.textContent = 'Connection failed — check network or CORS';
-  }
-}
-
-function populateVoiceSelector() {
-  const sel = $('setting-voice');
-  if (!sel) return;
-  sel.innerHTML = '<option value="">Default (Auto-select British)</option>';
-  const voices = State.availableVoices.filter(v => v.lang.startsWith('en'));
-  voices.forEach(v => {
-    const opt = document.createElement('option');
-    opt.value = v.voiceURI;
-    opt.textContent = `${v.name} (${v.lang})`;
-    if (State.selectedVoice && v.voiceURI === State.selectedVoice.voiceURI) opt.selected = true;
-    sel.appendChild(opt);
-  });
 }
 
 // ═══════════════════════════════════════════════════════
 //  PROJECTS
 // ═══════════════════════════════════════════════════════
-async function loadProjects() {
-  const projects = await api('projects') || [];
-  const grid = $('projects-grid');
-  const detail = $('project-detail');
-  if (!grid) return;
 
-  // Hide detail, show grid
-  grid.closest('section').querySelector('div').style.display = 'block';
-  if (detail) detail.style.display = 'none';
+async function renderProjects() {
+  const content = UI.mainContent();
+  try {
+    const res = await callApi('list_projects');
+    State.data.projects = res.projects || [];
+    const projects = State.data.projects;
 
-  if (projects.length === 0) {
-    grid.innerHTML = `
-      <div style="grid-column:1/-1;text-align:center;padding:var(--sp-16);color:var(--text-muted)">
-        <div style="font-family:var(--font-display);font-size:var(--text-lg);margin-bottom:var(--sp-3)">No active projects</div>
-        <div style="font-size:var(--text-sm)">Initialize a new project to begin operations.</div>
-      </div>`;
-    return;
-  }
-
-  grid.innerHTML = projects.map(p => {
-    const statusClass = p.status.toLowerCase();
-    return `
-      <div class="project-card" data-project-id="${p.id}" style="--project-color:${escHtml(p.color || '#00d4ff')}">
-        <div class="project-name">${escHtml(p.name)}</div>
-        <div class="project-status-badge ${statusClass}">
-          <span class="status-dot ${statusClass === 'active' ? '' : statusClass === 'paused' ? 'amber' : ''}"></span>
-          ${escHtml(p.status)}
-        </div>
-        <div style="font-size:var(--text-xs);color:var(--text-muted);margin-bottom:var(--sp-3)">${escHtml(p.description || 'No description')}</div>
-        <div class="progress-bar">
-          <div class="progress-fill" style="width:${p.progress || 0}%;background:${escHtml(p.color || '#00d4ff')}"></div>
-        </div>
-        <div style="display:flex;justify-content:space-between;margin-top:var(--sp-2)">
-          <span style="font-family:var(--font-mono);font-size:var(--text-xs);color:var(--text-faint)">${formatDateTime(p.created_at)}</span>
-          <span style="font-family:var(--font-mono);font-size:var(--text-xs);color:var(--text-cyan)">${p.progress || 0}%</span>
-        </div>
-      </div>`;
-  }).join('');
-
-  // Attach click handlers
-  grid.querySelectorAll('.project-card').forEach(card => {
-    card.addEventListener('click', () => {
-      const pid = parseInt(card.dataset.projectId);
-      openProjectDetail(pid);
-    });
-  });
-}
-
-async function openProjectDetail(projectId) {
-  State.currentProjectId = projectId;
-  const project = await api('projects', 'GET', null, `id=${projectId}`);
-  if (!project) return;
-
-  const grid = $('projects-grid');
-  const detail = $('project-detail');
-  const listView = $('view-projects').querySelector(':scope > div');
-
-  if (grid) grid.closest('div').style.display = 'none';
-  if (detail) detail.style.display = 'block';
-
-  const nameEl = $('project-detail-name');
-  const statusEl = $('project-detail-status');
-  if (nameEl) nameEl.textContent = project.name;
-  if (statusEl) {
-    statusEl.textContent = project.status;
-    statusEl.className = 'project-status-badge ' + project.status.toLowerCase();
-  }
-
-  renderKanban(projectId);
-}
-
-async function renderKanban(projectId) {
-  const tasks = await api('tasks', 'GET', null, `project_id=${projectId}`) || [];
-  const board = $('kanban-board');
-  if (!board) return;
-
-  const columns = {
-    todo: { label: 'To Do', tasks: [] },
-    inprogress: { label: 'In Progress', tasks: [] },
-    done: { label: 'Done', tasks: [] },
-  };
-
-  tasks.forEach(t => {
-    const col = t.status === 'todo' ? 'todo' : t.status === 'done' ? 'done' : 'inprogress';
-    columns[col].tasks.push(t);
-  });
-
-  board.innerHTML = Object.entries(columns).map(([colId, col]) => `
-    <div class="kanban-col" data-col="${colId}" id="col-${colId}">
-      <div class="kanban-col-header">
-        <span>${col.label}</span>
-        <span class="panel-badge">${col.tasks.length}</span>
+    content.innerHTML = `
+      <div class="view-header">
+        <h1 class="view-title">Projects</h1>
+        <button class="btn btn-primary" onclick="showNewProjectModal()">+ New Project</button>
       </div>
-      <div class="kanban-tasks" id="tasks-${colId}">
-        ${col.tasks.map(t => renderTaskCard(t)).join('')}
-      </div>
-    </div>`).join('');
-
-  // Drag and drop
-  initKanbanDragDrop();
-}
-
-function renderTaskCard(task) {
-  const priorityColors = { low: '#475569', medium: '#00d4ff', high: '#f0a500', critical: '#ff3b5c' };
-  const color = priorityColors[task.priority] || '#00d4ff';
-  return `
-    <div class="task-card" draggable="true" data-task-id="${task.id}" data-status="${task.status}"
-         style="border-left:3px solid ${color}">
-      <div style="font-size:var(--text-sm);font-weight:500;color:var(--text-primary);margin-bottom:var(--sp-1)">${escHtml(task.title)}</div>
-      ${task.description ? `<div style="font-size:var(--text-xs);color:var(--text-muted)">${escHtml(task.description)}</div>` : ''}
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-top:var(--sp-2)">
-        <span style="font-family:var(--font-mono);font-size:var(--text-xs);color:${color};text-transform:uppercase">${task.priority}</span>
-        <button onclick="deleteTask(${task.id})" style="color:var(--text-faint);width:20px;height:20px;display:flex;align-items:center;justify-content:center;border-radius:3px;transition:color 0.12s" onmouseover="this.style.color='var(--accent-red)'" onmouseout="this.style.color='var(--text-faint)'" aria-label="Delete task">
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-        </button>
-      </div>
-    </div>`;
-}
-
-window.deleteTask = async function(taskId) {
-  await api('tasks', 'DELETE', null, `id=${taskId}`);
-  renderKanban(State.currentProjectId);
-  playClickSound();
-};
-
-function initKanbanDragDrop() {
-  const cards = $$('.task-card');
-  const cols = $$('.kanban-col');
-
-  cards.forEach(card => {
-    card.addEventListener('dragstart', e => {
-      e.dataTransfer.setData('text/plain', card.dataset.taskId);
-      card.classList.add('dragging');
-    });
-    card.addEventListener('dragend', () => card.classList.remove('dragging'));
-  });
-
-  cols.forEach(col => {
-    col.addEventListener('dragover', e => {
-      e.preventDefault();
-      col.classList.add('drag-over');
-    });
-    col.addEventListener('dragleave', () => col.classList.remove('drag-over'));
-    col.addEventListener('drop', async e => {
-      e.preventDefault();
-      col.classList.remove('drag-over');
-      const taskId = e.dataTransfer.getData('text/plain');
-      const newStatus = col.dataset.col === 'inprogress' ? 'inprogress' : col.dataset.col;
-      await api('tasks', 'PUT', { id: taskId, status: newStatus }, `id=${taskId}`);
-      playSuccessSound();
-      renderKanban(State.currentProjectId);
-    });
-  });
-}
-
-// ═══════════════════════════════════════════════════════
-//  OPERATIONS
-// ═══════════════════════════════════════════════════════
-async function loadOperations() {
-  const ops = await api('operations') || [];
-  const list = $('operations-list');
-  if (!list) return;
-
-  // Also load operation groups (P5)
-  loadOperationGroups();
-
-  if (ops.length === 0) {
-    list.innerHTML = `
-      <div style="text-align:center;padding:var(--sp-16);color:var(--text-muted)">
-        <div style="font-family:var(--font-display);font-size:var(--text-lg);margin-bottom:var(--sp-3)">No operations queued</div>
-        <div style="font-size:var(--text-sm)">Queue a new operation to begin processing.</div>
-      </div>`;
-    return;
-  }
-
-  list.innerHTML = ops.map(op => `
-    <div class="operation-item ${op.status}" id="op-item-${op.id}">
-      <div class="op-status-icon ${op.status}"></div>
-      <div style="flex:1">
-        <div class="op-name">${escHtml(op.name)}</div>
-        ${op.result ? `<div style="font-size:var(--text-xs);color:var(--text-muted);margin-top:2px">${escHtml(op.result)}</div>` : ''}
-      </div>
-      <div class="op-progress-bar"><div class="op-progress-fill" style="width:${op.progress}%"></div></div>
-      <div class="op-percent">${op.progress}%</div>
-      <span style="font-family:var(--font-mono);font-size:var(--text-xs);color:var(--text-faint);text-transform:uppercase;width:80px;text-align:right">${op.status}</span>
-    </div>`).join('');
-
-  // Simulate operation progress for queued/processing items
-  ops.filter(o => o.status === 'queued' || o.status === 'processing').forEach(op => {
-    simulateOperationProgress(op);
-  });
-}
-
-function simulateOperationProgress(op) {
-  if (op.status === 'queued') {
-    setTimeout(async () => {
-      if (window.CinematicVFX) CinematicVFX.operationLaunch(op.name);
-      await api('operations', 'PUT', { id: op.id, status: 'processing', progress: 5 }, `id=${op.id}`);
-      if (State.currentView === 'operations') loadOperations();
-      simulateOperationProgress({ ...op, status: 'processing', progress: 5 });
-    }, 2000 + Math.random() * 3000);
-    return;
-  }
-
-  let progress = op.progress || 5;
-  const interval = setInterval(async () => {
-    progress += 5 + Math.random() * 10;
-    if (progress >= 100) {
-      progress = 100;
-      clearInterval(interval);
-      await api('operations', 'PUT', { id: op.id, status: 'complete', progress: 100, result: 'Operation completed successfully' }, `id=${op.id}`);
-      speakText(fillTemplate(`Operation ${op.name} complete, ${State.userName}.`, {}));
-      showToast(`✓ Operation complete: ${op.name}`);
-      playSuccessSound();
-      if (State.currentView === 'operations' || State.currentView === 'dashboard') {
-        loadOperations();
-        loadDashboard();
+      ${
+        projects.length === 0
+          ? '<div class="empty-state-full"><p>No projects found. Create your first project.</p></div>'
+          : `<div class="project-grid">${projects.map(p => renderProjectCard(p)).join('')}</div>`
       }
-    } else {
-      await api('operations', 'PUT', { id: op.id, status: 'processing', progress: Math.floor(progress) }, `id=${op.id}`);
-      if (State.currentView === 'operations') loadOperations();
+    `;
+  } catch (err) {
+    content.innerHTML = `<div class="error-state"><h2>Error</h2><p>${escapeHtml(err.message)}</p></div>`;
+  }
+}
+
+function renderProjectCard(p) {
+  const taskCount = (p.tasks || []).length;
+  const doneCount = (p.tasks || []).filter(t => t.status === 'done').length;
+  const pct       = taskCount ? Math.round((doneCount / taskCount) * 100) : 0;
+  return `
+    <div class="project-card" data-id="${escapeHtml(p.id)}">
+      <div class="project-card-header">
+        <span class="project-card-title">${escapeHtml(p.name)}</span>
+        <span class="badge badge-${p.status}">${escapeHtml(p.status)}</span>
+      </div>
+      <p class="project-card-desc">${escapeHtml(p.description || 'No description')}</p>
+      <div class="project-card-meta">
+        <span>${taskCount} task${taskCount !== 1 ? 's' : ''}</span>
+        <span>Created ${formatDate(p.created_at)}</span>
+      </div>
+      <div class="progress-bar">
+        <div class="progress-fill" style="width:${pct}%"></div>
+      </div>
+      <div class="card-actions">
+        <button class="btn btn-sm" onclick="showProjectDetail('${escapeHtml(p.id)}')">View</button>
+        <button class="btn btn-sm btn-danger" onclick="deleteProject('${escapeHtml(p.id)}', '${escapeHtml(p.name)}')">Delete</button>
+      </div>
+    </div>
+  `;
+}
+
+async function showProjectDetail(id) {
+  try {
+    const res = await callApi('get_project', { id });
+    const p = res.project;
+    showModal(
+      escapeHtml(p.name),
+      `<p><strong>Status:</strong> ${escapeHtml(p.status)}</p>
+       <p><strong>Description:</strong> ${escapeHtml(p.description || 'None')}</p>
+       <p><strong>Created:</strong> ${formatDate(p.created_at)}</p>
+       <h4>Tasks (${(p.tasks || []).length})</h4>
+       <ul>${(p.tasks || []).map(t => `<li>${escapeHtml(t.name)} — <em>${escapeHtml(t.status)}</em></li>`).join('') || '<li>No tasks</li>'}</ul>`,
+    );
+  } catch (err) {
+    showToast('Failed to load project: ' + err.message, 'error');
+  }
+}
+
+function showNewProjectModal() {
+  showModal(
+    'New Project',
+    `<label>Project Name<input id="mProjectName" class="modal-input" placeholder="Enter project name" autofocus /></label>
+     <label>Description<textarea id="mProjectDesc" class="modal-input" rows="3" placeholder="Optional description"></textarea></label>
+     <label>Status
+       <select id="mProjectStatus" class="modal-input">
+         <option value="active">Active</option>
+         <option value="planning">Planning</option>
+         <option value="on_hold">On Hold</option>
+       </select>
+     </label>`,
+    async () => {
+      const name   = document.getElementById('mProjectName')?.value?.trim();
+      const desc   = document.getElementById('mProjectDesc')?.value?.trim();
+      const status = document.getElementById('mProjectStatus')?.value || 'active';
+      if (!name) { showToast('Project name is required.', 'warning'); return; }
+      await createProjectAction(name, desc, status);
     }
-  }, 1500 + Math.random() * 1000);
+  );
+}
+
+async function createProjectAction(name, desc, status = 'active') {
+  try {
+    setStatus('processing');
+    await callApi('create_project', { name, description: desc, status });
+    const msg = fillTemplate(pickRandom(JARVIS_RESPONSES.project_created), { name, user: State.userName });
+    showToast(msg, 'success');
+    speakText(msg);
+    setStatus('online');
+    renderProjects();
+  } catch (err) {
+    showToast('Failed to create project: ' + err.message, 'error');
+    setStatus('error');
+  }
+}
+
+async function deleteProject(id, name) {
+  showModal(
+    'Delete Project',
+    `<p>Are you sure you want to delete <strong>${escapeHtml(name)}</strong>? This cannot be undone.</p>`,
+    async () => {
+      try {
+        await callApi('delete_project', { id });
+        showToast(`Project "${name}" deleted.`, 'success');
+        renderProjects();
+      } catch (err) {
+        showToast('Failed to delete: ' + err.message, 'error');
+      }
+    }
+  );
 }
 
 // ═══════════════════════════════════════════════════════
-//  SCHEDULED TASKS
+//  TASKS
 // ═══════════════════════════════════════════════════════
-async function loadSchedule() {
-  const tasks = await api('scheduled_tasks') || [];
 
-  // Update KPIs
-  const scheduled = tasks.filter(t => t.status === 'scheduled').length;
-  const inProgress = tasks.filter(t => t.status === 'in_progress').length;
-  const completed = tasks.filter(t => t.status === 'completed').length;
-  const delayed = tasks.filter(t => t.status === 'delayed').length;
+async function renderTasks() {
+  const content = UI.mainContent();
+  try {
+    const [tasksRes, projectsRes] = await Promise.all([
+      callApi('list_tasks'),
+      callApi('list_projects'),
+    ]);
+    State.data.tasks    = tasksRes.tasks    || [];
+    State.data.projects = projectsRes.projects || [];
+    const tasks = State.data.tasks;
 
-  animateCount($('kpi-scheduled'), scheduled);
-  animateCount($('kpi-in-progress'), inProgress);
-  animateCount($('kpi-completed-tasks'), completed);
-  animateCount($('kpi-delayed'), delayed);
+    const filterBtns = ['all', 'pending', 'in_progress', 'done'].map(f =>
+      `<button class="btn btn-sm filter-btn" data-filter="${f}" onclick="filterTasks('${f}')">${f === 'all' ? 'All' : f.replace('_', ' ')}</button>`
+    ).join('');
 
-  const timeline = $('schedule-timeline');
-  if (!timeline) return;
-
-  if (tasks.length === 0) {
-    timeline.innerHTML = '<div style="color:var(--text-faint);font-family:var(--font-mono);font-size:var(--text-xs);text-align:center;padding:var(--sp-6)">No scheduled tasks yet. Ask JARVIS to schedule something via WhatsApp.</div>';
-    return;
-  }
-
-  timeline.innerHTML = tasks.map(t => {
-    const deadline = new Date(t.deadline);
-    const now = new Date();
-    const isOverdue = deadline < now && t.status !== 'completed';
-    const statusColors = {
-      'scheduled': 'var(--accent-cyan)',
-      'in_progress': 'var(--accent-amber, #f59e0b)',
-      'completed': 'var(--accent-green, #10b981)',
-      'delayed': 'var(--accent-red, #ef4444)',
-      'failed': 'var(--accent-red, #ef4444)'
-    };
-    const statusColor = statusColors[t.status] || 'var(--text-muted)';
-    const statusLabel = t.status.replace('_', ' ').toUpperCase();
-    const timeStr = deadline.toLocaleString('en-US', { month:'short', day:'numeric', hour:'2-digit', minute:'2-digit' });
-    const typeIcons = { report: '📊', app: '📱', research: '🔬', email: '📧', general: '⚡' };
-    const icon = typeIcons[t.type] || '📋';
-
-    return `
-      <div class="schedule-card ${t.status}${isOverdue ? ' overdue' : ''}" style="
-        border-left: 3px solid ${statusColor};
-        background: var(--bg-card);
-        border-radius: var(--radius-md);
-        padding: var(--sp-4);
-        margin-bottom: var(--sp-3);
-        position: relative;
-      ">
-        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:var(--sp-3)">
-          <div style="flex:1">
-            <div style="display:flex;align-items:center;gap:var(--sp-2);margin-bottom:var(--sp-2)">
-              <span style="font-size:1.1rem">${icon}</span>
-              <span style="font-family:var(--font-mono);font-size:var(--text-sm);font-weight:600;color:var(--text-primary)">${escHtml(t.title)}</span>
-            </div>
-            ${t.description ? `<div style="font-size:var(--text-xs);color:var(--text-muted);margin-bottom:var(--sp-2)">${escHtml(t.description)}</div>` : ''}
-            <div style="display:flex;gap:var(--sp-3);flex-wrap:wrap;align-items:center">
-              <span style="font-family:var(--font-mono);font-size:var(--text-xs);color:var(--text-faint)">⏰ ${timeStr}</span>
-              <span style="font-family:var(--font-mono);font-size:10px;padding:2px 8px;border-radius:var(--radius-sm);background:${statusColor}22;color:${statusColor};border:1px solid ${statusColor}44">${statusLabel}</span>
-              ${t.priority === 'high' ? '<span style="font-family:var(--font-mono);font-size:10px;padding:2px 8px;border-radius:var(--radius-sm);background:#ef444422;color:#ef4444;border:1px solid #ef444444">HIGH</span>' : ''}
-            </div>
-            ${t.delay_reason ? `<div style="font-size:var(--text-xs);color:#ef4444;margin-top:var(--sp-2);font-style:italic">⚠ ${escHtml(t.delay_reason)}</div>` : ''}
-            ${t.result && t.status === 'completed' ? `<div style="font-size:var(--text-xs);color:var(--accent-green, #10b981);margin-top:var(--sp-2)">✓ ${escHtml(t.result.substring(0, 200))}</div>` : ''}
-          </div>
-          <div style="text-align:right;min-width:60px">
-            ${t.progress > 0 ? `
-              <div style="font-family:var(--font-mono);font-size:var(--text-lg);font-weight:700;color:${statusColor}">${t.progress}%</div>
-              <div style="width:60px;height:4px;background:var(--bg-dim);border-radius:2px;overflow:hidden;margin-top:var(--sp-1)">
-                <div style="width:${t.progress}%;height:100%;background:${statusColor};transition:width 0.5s ease"></div>
-              </div>
-            ` : ''}
-          </div>
+    content.innerHTML = `
+      <div class="view-header">
+        <h1 class="view-title">Tasks</h1>
+        <div class="header-actions">
+          <div class="filter-group">${filterBtns}</div>
+          <button class="btn btn-primary" onclick="showNewTaskModal()">+ New Task</button>
         </div>
+      </div>
+      <div id="taskList">
+        ${renderTaskList(tasks, 'all')}
       </div>
     `;
-  }).join('');
+  } catch (err) {
+    content.innerHTML = `<div class="error-state"><h2>Error</h2><p>${escapeHtml(err.message)}</p></div>`;
+  }
 }
 
-// ═══════════════════════════════════════════════════════
-//  TASK PROPOSALS (P1)
-// ═══════════════════════════════════════════════════════
-async function loadProposals() {
-  const proposals = await api('task_proposals') || [];
+function renderTaskList(tasks, filter) {
+  const filtered = filter === 'all' ? tasks : tasks.filter(t => t.status === filter);
+  if (filtered.length === 0) return '<div class="empty-state-full"><p>No tasks found.</p></div>';
+  return `<div class="task-list">${filtered.map(t => renderTaskItem(t)).join('')}</div>`;
+}
 
-  const pending = proposals.filter(p => p.status === 'pending_approval').length;
-  const approved = proposals.filter(p => p.status === 'approved' || p.status === 'executing' || p.status === 'completed').length;
-  const rejected = proposals.filter(p => p.status === 'rejected').length;
+function renderTaskItem(t) {
+  return `
+    <div class="task-item" data-id="${escapeHtml(t.id)}">
+      <div class="task-checkbox ${t.status === 'done' ? 'checked' : ''}" onclick="toggleTaskStatus('${escapeHtml(t.id)}', '${escapeHtml(t.status)}')"></div>
+      <div class="task-body">
+        <div class="task-title ${t.status === 'done' ? 'done' : ''}">${escapeHtml(t.name)}</div>
+        <div class="task-meta">
+          <span class="badge badge-${t.priority || 'medium'}">${escapeHtml(t.priority || 'medium')}</span>
+          ${t.project ? `<span class="task-project">${escapeHtml(t.project)}</span>` : ''}
+          ${t.due_date ? `<span class="task-due">Due ${formatDate(t.due_date)}</span>` : ''}
+        </div>
+      </div>
+      <div class="task-actions">
+        <button class="btn btn-sm btn-danger" onclick="deleteTask('${escapeHtml(t.id)}', '${escapeHtml(t.name)}')">✕</button>
+      </div>
+    </div>
+  `;
+}
 
-  animateCount($('kpi-pending-proposals'), pending);
-  animateCount($('kpi-approved-proposals'), approved);
-  animateCount($('kpi-rejected-proposals'), rejected);
-
-  const list = $('proposals-list');
-  if (!list) return;
-
-  if (proposals.length === 0) {
-    list.innerHTML = `
-      <div style="text-align:center;padding:var(--sp-16);color:var(--text-muted)">
-        <div style="font-family:var(--font-display);font-size:var(--text-lg);margin-bottom:var(--sp-3)">No task proposals yet</div>
-        <div style="font-size:var(--text-sm)">JARVIS will propose tasks autonomously during conversations. Approve or reject via WhatsApp.</div>
-      </div>`;
-    return;
-  }
-
-  // Sort: pending first, then by date desc
-  const sorted = [...proposals].sort((a, b) => {
-    if (a.status === 'pending_approval' && b.status !== 'pending_approval') return -1;
-    if (b.status === 'pending_approval' && a.status !== 'pending_approval') return 1;
-    return (b.id || 0) - (a.id || 0);
+function filterTasks(filter) {
+  document.querySelectorAll('.filter-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.filter === filter);
   });
-
-  list.innerHTML = sorted.map(p => {
-    const statusColors = {
-      'pending_approval': { bg: '#f59e0b22', border: '#f59e0b44', color: '#f59e0b', label: 'PENDING' },
-      'approved': { bg: '#10b98122', border: '#10b98144', color: '#10b981', label: 'APPROVED' },
-      'rejected': { bg: '#ef444422', border: '#ef444444', color: '#ef4444', label: 'REJECTED' },
-      'executing': { bg: '#00d4ff22', border: '#00d4ff44', color: '#00d4ff', label: 'EXECUTING' },
-      'completed': { bg: '#10b98122', border: '#10b98144', color: '#10b981', label: 'COMPLETED' },
-    };
-    const s = statusColors[p.status] || statusColors['pending_approval'];
-    const priorityColors = { low: '#475569', medium: '#00d4ff', high: '#f0a500', critical: '#ff3b5c' };
-    const pColor = priorityColors[p.priority] || '#00d4ff';
-
-    // Parse steps if available
-    let steps = [];
-    try { steps = JSON.parse(p.steps_json || '[]'); } catch {}
-
-    const isPending = p.status === 'pending_approval';
-
-    return `
-      <div class="hud-panel" style="padding:var(--sp-5);margin-bottom:var(--sp-4);border-left:3px solid ${s.color}">
-        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:var(--sp-3);margin-bottom:var(--sp-3)">
-          <div style="flex:1">
-            <div style="font-family:var(--font-mono);font-size:var(--text-sm);font-weight:600;color:var(--text-primary);margin-bottom:var(--sp-1)">${escHtml(p.title)}</div>
-            ${p.description ? `<div style="font-size:var(--text-xs);color:var(--text-muted);margin-bottom:var(--sp-2)">${escHtml(p.description)}</div>` : ''}
-          </div>
-          <div style="display:flex;gap:var(--sp-2);align-items:center;flex-shrink:0">
-            <span style="font-family:var(--font-mono);font-size:10px;padding:2px 8px;border-radius:var(--radius-sm);background:${s.bg};color:${s.color};border:1px solid ${s.border}">${s.label}</span>
-            <span style="font-family:var(--font-mono);font-size:10px;padding:2px 8px;border-radius:var(--radius-sm);color:${pColor};text-transform:uppercase">${escHtml(p.priority || 'medium')}</span>
-          </div>
-        </div>
-        ${steps.length > 0 ? `
-          <div style="margin-bottom:var(--sp-3)">
-            <div style="font-family:var(--font-mono);font-size:10px;color:var(--text-faint);text-transform:uppercase;margin-bottom:var(--sp-2)">Execution Steps</div>
-            <ol style="margin:0;padding-left:var(--sp-5);font-size:var(--text-xs);color:var(--text-muted)">
-              ${steps.map(st => `<li style="margin-bottom:2px">${escHtml(typeof st === 'string' ? st : st.description || JSON.stringify(st))}</li>`).join('')}
-            </ol>
-          </div>` : ''}
-        <div style="display:flex;justify-content:space-between;align-items:center">
-          <span style="font-family:var(--font-mono);font-size:var(--text-xs);color:var(--text-faint)">${formatDateTime(p.created_at)}</span>
-          ${isPending ? `
-            <div style="display:flex;gap:var(--sp-2)">
-              <button onclick="approveProposal(${p.id})" class="btn btn-primary" style="font-size:var(--text-xs);padding:4px 12px">APPROVE</button>
-              <button onclick="rejectProposal(${p.id})" class="btn btn-danger" style="font-size:var(--text-xs);padding:4px 12px">REJECT</button>
-            </div>` : ''}
-          ${p.status === 'rejected' && p.rejection_reason ? `<span style="font-size:var(--text-xs);color:#ef4444;font-style:italic">${escHtml(p.rejection_reason)}</span>` : ''}
-        </div>
-      </div>`;
-  }).join('');
+  const taskList = document.getElementById('taskList');
+  if (taskList) taskList.innerHTML = renderTaskList(State.data.tasks, filter);
 }
 
-window.approveProposal = async function(id) {
-  await api('task_proposals', 'PUT', { id, status: 'approved', approved_at: new Date().toISOString() }, `id=${id}`);
-  playSuccessSound();
-  showToast('Proposal approved.');
-  loadProposals();
-};
-
-window.rejectProposal = async function(id) {
-  const reason = prompt('Rejection reason (optional):') || '';
-  await api('task_proposals', 'PUT', { id, status: 'rejected', rejection_reason: reason }, `id=${id}`);
-  playClickSound();
-  showToast('Proposal rejected.');
-  loadProposals();
-};
-
-// ═══════════════════════════════════════════════════════
-//  ARTIFACTS (P2)
-// ═══════════════════════════════════════════════════════
-async function loadArtifacts() {
-  const artifacts = await api('artifacts') || [];
-  const grid = $('artifacts-grid');
-  if (!grid) return;
-
-  if (artifacts.length === 0) {
-    grid.innerHTML = `
-      <div style="grid-column:1/-1;text-align:center;padding:var(--sp-16);color:var(--text-muted)">
-        <div style="font-family:var(--font-display);font-size:var(--text-lg);margin-bottom:var(--sp-3)">No artifacts generated</div>
-        <div style="font-size:var(--text-sm)">JARVIS will store generated files, reports, and documents here.</div>
-      </div>`;
-    return;
+async function toggleTaskStatus(id, currentStatus) {
+  const newStatus = currentStatus === 'done' ? 'pending' : 'done';
+  try {
+    await callApi('update_task', { id, status: newStatus });
+    const task = State.data.tasks.find(t => t.id === id);
+    if (task) task.status = newStatus;
+    const activeFilter = document.querySelector('.filter-btn.active')?.dataset.filter || 'all';
+    const taskList = document.getElementById('taskList');
+    if (taskList) taskList.innerHTML = renderTaskList(State.data.tasks, activeFilter);
+  } catch (err) {
+    showToast('Failed to update task: ' + err.message, 'error');
   }
-
-  const typeIcons = {
-    'pdf': '📄', 'document': '📝', 'image': '🖼️', 'spreadsheet': '📊',
-    'presentation': '📽️', 'code': '💻', 'audio': '🎵', 'video': '🎬',
-    'report': '📋', 'analysis': '🔬', 'design': '🎨', 'other': '📁'
-  };
-
-  grid.innerHTML = artifacts.map(a => {
-    const icon = typeIcons[a.type] || typeIcons['other'];
-    const hasUrl = a.file_url && a.file_url.startsWith('http');
-
-    return `
-      <div class="hud-panel" style="padding:var(--sp-5)">
-        <div style="display:flex;align-items:center;gap:var(--sp-3);margin-bottom:var(--sp-3)">
-          <span style="font-size:1.5rem">${icon}</span>
-          <div style="flex:1;min-width:0">
-            <div style="font-family:var(--font-mono);font-size:var(--text-sm);font-weight:600;color:var(--text-primary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(a.title)}</div>
-            <div style="font-family:var(--font-mono);font-size:10px;color:var(--text-faint);text-transform:uppercase">${escHtml(a.type || 'file')}</div>
-          </div>
-        </div>
-        ${a.description ? `<div style="font-size:var(--text-xs);color:var(--text-muted);margin-bottom:var(--sp-3)">${escHtml(a.description)}</div>` : ''}
-        ${a.content_json && a.content_json !== '{}' ? `<div style="font-size:10px;color:var(--text-faint);font-family:var(--font-mono);margin-bottom:var(--sp-3);word-break:break-all">${escHtml(typeof a.content_json === 'string' ? a.content_json.slice(0, 120) : JSON.stringify(a.content_json).slice(0, 120))}</div>` : ''}
-        <div style="display:flex;justify-content:space-between;align-items:center">
-          <span style="font-family:var(--font-mono);font-size:var(--text-xs);color:var(--text-faint)">${formatDateTime(a.created_at)}</span>
-          ${hasUrl ? `<a href="${escHtml(a.file_url)}" target="_blank" rel="noopener" style="font-family:var(--font-mono);font-size:var(--text-xs);color:var(--accent-cyan);text-decoration:none">OPEN →</a>` : ''}
-        </div>
-      </div>`;
-  }).join('');
 }
+
+function showNewTaskModal() {
+  const projectOptions = State.data.projects.map(p =>
+    `<option value="${escapeHtml(p.name)}">${escapeHtml(p.name)}</option>`
+  ).join('');
+  showModal(
+    'New Task',
+    `<label>Task Name<input id="mTaskName" class="modal-input" placeholder="Enter task name" autofocus /></label>
+     <label>Project
+       <select id="mTaskProject" class="modal-input">
+         <option value="">— None —</option>
+         ${projectOptions}
+       </select>
+     </label>
+     <label>Priority
+       <select id="mTaskPriority" class="modal-input">
+         <option value="medium">Medium</option>
+         <option value="high">High</option>
+         <option value="low">Low</option>
+       </select>
+     </label>
+     <label>Due Date<input id="mTaskDue" type="date" class="modal-input" /></label>`,
+    async () => {
+      const name     = document.getElementById('mTaskName')?.value?.trim();
+      const project  = document.getElementById('mTaskProject')?.value;
+      const priority = document.getElementById('mTaskPriority')?.value || 'medium';
+      const due_date = document.getElementById('mTaskDue')?.value;
+      if (!name) { showToast('Task name is required.', 'warning'); return; }
+      await createTaskAction(name, project, priority, due_date);
+    }
+  );
+}
+
+async function createTaskAction(name, project, priority, due_date) {
+  try {
+    setStatus('processing');
+    await callApi('create_task', { name, project, priority, due_date });
+    const msg = fillTemplate(pickRandom(JARVIS_RESPONSES.task_created), { name });
+    showToast(msg, 'success');
+    speakText(msg);
+    setStatus('online');
+    renderTasks();
+  } catch (err) {
+    showToast('Failed to create task: ' + err.message, 'error');
+    setStatus('error');
+  }
+}
+
+async function deleteTask(id, name) {
+  showModal(
+    'Delete Task',
+    `<p>Delete task <strong>${escapeHtml(name)}</strong>?</p>`,
+    async () => {
+      try {
+        await callApi('delete_task', { id });
+        showToast(`Task "${name}" deleted.`, 'success');
+        renderTasks();
+      } catch (err) {
+        showToast('Failed to delete task: ' + err.message, 'error');
+      }
+    }
+  );
+}
+
 // ═══════════════════════════════════════════════════════
 //  RESEARCH
 // ═══════════════════════════════════════════════════════
-async function loadResearch() {
-  const entries = await api('research') || [];
-  const list = $('research-list');
-  if (!list) return;
 
-  if (entries.length === 0) {
-    list.innerHTML = `
-      <div style="text-align:center;padding:var(--sp-16);color:var(--text-muted)">
-        <div style="font-family:var(--font-display);font-size:var(--text-lg);margin-bottom:var(--sp-3)">No research entries</div>
-        <div style="font-size:var(--text-sm)">Initiate a new research operation to populate the knowledge matrix.</div>
-      </div>`;
-    return;
+async function renderResearch() {
+  const content = UI.mainContent();
+  try {
+    const res = await callApi('list_research');
+    State.data.research = res.research || [];
+
+    content.innerHTML = `
+      <div class="view-header">
+        <h1 class="view-title">Research</h1>
+        <button class="btn btn-primary" onclick="showNewResearchModal()">+ New Research</button>
+      </div>
+      ${
+        State.data.research.length === 0
+          ? '<div class="empty-state-full"><p>No research entries yet.</p></div>'
+          : `<div class="research-grid">${State.data.research.map(r => renderResearchCard(r)).join('')}</div>`
+      }
+    `;
+  } catch (err) {
+    content.innerHTML = `<div class="error-state"><h2>Error</h2><p>${escapeHtml(err.message)}</p></div>`;
   }
-
-  list.innerHTML = entries.map(e => {
-    let findings = [];
-    try { findings = JSON.parse(e.findings || '[]'); } catch {}
-    return `
-      <div class="research-card hud-panel">
-        <div style="padding:var(--sp-5)">
-          <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:var(--sp-3)">
-            <div class="research-topic">${escHtml(e.topic)}</div>
-            <span style="font-family:var(--font-mono);font-size:var(--text-xs);color:var(--text-faint)">${formatDateTime(e.created_at)}</span>
-          </div>
-          ${e.summary ? `<div style="font-size:var(--text-sm);color:var(--text-muted);margin-bottom:var(--sp-4);line-height:1.6">${escHtml(e.summary)}</div>` : ''}
-          ${findings.length > 0 ? `
-            <ul class="research-findings">
-              ${findings.map(f => `<li>${escHtml(f)}</li>`).join('')}
-            </ul>` : ''}
-          <div style="margin-top:var(--sp-4);display:flex;gap:var(--sp-3)">
-            <button class="btn btn-danger btn-icon" onclick="deleteResearch(${e.id})" aria-label="Delete research entry">
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
-            </button>
-          </div>
-        </div>
-      </div>`;
-  }).join('');
 }
 
-window.deleteResearch = async function(id) {
-  await api('research', 'DELETE', null, `id=${id}`);
-  loadResearch();
-  playClickSound();
-};
+function renderResearchCard(r) {
+  const tagHtml = (r.tags || []).map(t => `<span class="tag">${escapeHtml(t)}</span>`).join('');
+  return `
+    <div class="research-card">
+      <div class="research-card-header">
+        <span class="research-card-title">${escapeHtml(r.topic)}</span>
+        <button class="btn btn-sm btn-danger" onclick="deleteResearch('${escapeHtml(r.id)}', '${escapeHtml(r.topic)}')">✕</button>
+      </div>
+      <div class="research-card-content">${escapeHtml(r.content).substring(0, 200)}${r.content.length > 200 ? '…' : ''}</div>
+      <div class="research-card-footer">
+        <div class="tag-list">${tagHtml}</div>
+        <span class="research-date">${formatDateTime(r.created_at)}</span>
+      </div>
+    </div>
+  `;
+}
+
+function showNewResearchModal() {
+  showModal(
+    'New Research Entry',
+    `<label>Topic<input id="mResTopic" class="modal-input" placeholder="Research topic" autofocus /></label>
+     <label>Content<textarea id="mResContent" class="modal-input" rows="5" placeholder="Research notes, findings, links…"></textarea></label>
+     <label>Tags (comma-separated)<input id="mResTags" class="modal-input" placeholder="ai, tech, notes" /></label>`,
+    async () => {
+      const topic   = document.getElementById('mResTopic')?.value?.trim();
+      const content = document.getElementById('mResContent')?.value?.trim();
+      const tagsRaw = document.getElementById('mResTags')?.value?.trim();
+      const tags    = tagsRaw ? tagsRaw.split(',').map(t => t.trim()).filter(Boolean) : [];
+      if (!topic) { showToast('Topic is required.', 'warning'); return; }
+      await saveResearchAction(topic, content, tags);
+    }
+  );
+}
+
+async function saveResearchAction(topic, content, tags) {
+  try {
+    setStatus('processing');
+    await callApi('save_research', { topic, content, tags });
+    const msg = fillTemplate(pickRandom(JARVIS_RESPONSES.research_saved), { topic, user: State.userName });
+    showToast(msg, 'success');
+    speakText(msg);
+    setStatus('online');
+    renderResearch();
+  } catch (err) {
+    showToast('Failed to save research: ' + err.message, 'error');
+    setStatus('error');
+  }
+}
+
+async function deleteResearch(id, topic) {
+  showModal(
+    'Delete Research',
+    `<p>Delete research on <strong>${escapeHtml(topic)}</strong>?</p>`,
+    async () => {
+      try {
+        await callApi('delete_research', { id });
+        showToast(`Research "${topic}" deleted.`, 'success');
+        renderResearch();
+      } catch (err) {
+        showToast('Failed to delete: ' + err.message, 'error');
+      }
+    }
+  );
+}
 
 // ═══════════════════════════════════════════════════════
 //  MEMORY
 // ═══════════════════════════════════════════════════════
-async function loadMemory(searchQuery = '') {
-  // Use enhanced version with category filtering (P6)
-  return loadMemoryEnhanced(searchQuery, '');
-}
 
-/* --- Legacy loadMemory kept for reference ---
-  const params = searchQuery ? `search=${encodeURIComponent(searchQuery)}` : '';
-  const memories = await api('memories', 'GET', null, params) || [];
-  const grid = $('memory-grid');
-  if (!grid) return;
-
-  if (memories.length === 0) {
-    grid.innerHTML = `
-      <div style="grid-column:1/-1;text-align:center;padding:var(--sp-16);color:var(--text-muted)">
-        <div style="font-family:var(--font-display);font-size:var(--text-lg);margin-bottom:var(--sp-3)">${searchQuery ? 'No memories match your search' : 'Memory banks empty'}</div>
-        <div style="font-size:var(--text-sm)">Start a conversation or save notes to populate memory banks.</div>
-      </div>`;
-    return;
-  }
-
-  grid.innerHTML = memories.map(m => {
-    let tags = [];
-    try { tags = JSON.parse(m.tags || '[]'); } catch {}
-    return `
-      <div class="memory-node">
-        <div class="memory-title">${escHtml(m.title)}</div>
-        <div class="memory-content">${escHtml(m.content)}</div>
-        ${tags.length ? `
-          <div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:var(--sp-3)">
-            ${tags.map(t => `<span style="font-family:var(--font-mono);font-size:10px;padding:2px 6px;border-radius:100px;background:rgba(0,212,255,0.08);color:var(--accent-cyan);border:1px solid rgba(0,212,255,0.2)">${escHtml(t)}</span>`).join('')}
-          </div>` : ''}
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-top:var(--sp-3)">
-          <span class="memory-date">${formatDateTime(m.created_at)}</span>
-          <button onclick="deleteMemory(${m.id})" style="color:var(--text-faint);width:20px;height:20px;display:flex;align-items:center;justify-content:center" aria-label="Delete memory">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-          </button>
-        </div>
-      </div>`;
-  }).join('');
-}
-/* --- end legacy loadMemory --- */
-
-window.deleteMemory = async function(id) {
-  await api('memories', 'DELETE', null, `id=${id}`);
-  loadMemory();
-  playClickSound();
-};
-
-// ═══════════════════════════════════════════════════════
-//  OPERATIONS — Enhanced with Operation Groups (P5)
-// ═══════════════════════════════════════════════════════
-async function loadOperationGroups() {
+async function renderMemory() {
+  const content = UI.mainContent();
   try {
-    const groups = await api('operation_groups') || [];
-    const container = $('operation-groups-panel');
-    if (!container) return;
+    const res = await callApi('list_memories');
+    State.data.memories = res.memories || [];
 
-    if (groups.length === 0) {
-      container.innerHTML = '<div style="color:var(--text-faint);font-family:var(--font-mono);font-size:var(--text-xs);padding:var(--sp-4);text-align:center">No parallel operation groups active</div>';
-      return;
-    }
-
-    container.innerHTML = groups.map(g => {
-      let ops = [];
-      try { ops = JSON.parse(g.operations_json || '[]'); } catch {}
-      const totalOps = ops.length;
-      const completedOps = ops.filter(o => o.status === 'complete').length;
-      const groupProgress = totalOps > 0 ? Math.round((completedOps / totalOps) * 100) : 0;
-      const statusColor = g.status === 'complete' ? 'var(--accent-green, #10b981)' : g.status === 'failed' ? 'var(--accent-red, #ef4444)' : 'var(--accent-cyan)';
-
-      return `
-        <div class="hud-panel" style="padding:var(--sp-4);margin-bottom:var(--sp-3);border-left:3px solid ${statusColor}">
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:var(--sp-3)">
-            <div style="font-family:var(--font-mono);font-size:var(--text-sm);font-weight:600;color:var(--text-primary)">${escHtml(g.name)}</div>
-            <span style="font-family:var(--font-mono);font-size:10px;padding:2px 8px;border-radius:var(--radius-sm);background:${statusColor}22;color:${statusColor};border:1px solid ${statusColor}44;text-transform:uppercase">${escHtml(g.status)}</span>
-          </div>
-          <div style="display:flex;gap:var(--sp-2);flex-wrap:wrap;margin-bottom:var(--sp-3)">
-            ${ops.map(o => {
-              const opColor = o.status === 'complete' ? '#10b981' : o.status === 'processing' ? '#00d4ff' : o.status === 'failed' ? '#ef4444' : '#475569';
-              return `<div style="display:flex;align-items:center;gap:4px;font-size:10px;font-family:var(--font-mono);color:${opColor}"><span style="width:6px;height:6px;border-radius:50%;background:${opColor};display:inline-block"></span>${escHtml(o.name || 'Op')}</div>`;
-            }).join('')}
-          </div>
-          <div style="display:flex;align-items:center;gap:var(--sp-3)">
-            <div class="op-progress-bar" style="flex:1"><div class="op-progress-fill" style="width:${groupProgress}%"></div></div>
-            <span style="font-family:var(--font-mono);font-size:var(--text-xs);color:var(--text-cyan)">${completedOps}/${totalOps}</span>
-          </div>
-        </div>`;
-    }).join('');
-  } catch (err) {
-    console.warn('loadOperationGroups error:', err);
-  }
-}
-
-// ═══════════════════════════════════════════════════════
-//  ENHANCED MEMORY VIEW (P6)
-// ═══════════════════════════════════════════════════════
-async function loadMemoryEnhanced(searchQuery = '', filterCategory = '') {
-  let params = '';
-  if (searchQuery) params += `search=${encodeURIComponent(searchQuery)}`;
-  if (filterCategory) params += `${params ? '&' : ''}category=${encodeURIComponent(filterCategory)}`;
-  const memories = await api('memories', 'GET', null, params) || [];
-  const grid = $('memory-grid');
-  if (!grid) return;
-
-  // Build category counts for filter bar
-  const categories = {};
-  memories.forEach(m => {
-    const cat = m.category || 'general';
-    categories[cat] = (categories[cat] || 0) + 1;
-  });
-
-  const filterBar = $('memory-filter-bar');
-  if (filterBar) {
-    const catIcons = { technical: '💻', schedule: '📅', ideas: '💡', knowledge: '📚', contacts: '👤', financial: '💰', preferences: '⚙️', general: '📁' };
-    filterBar.innerHTML = `
-      <button class="memory-filter-btn ${!filterCategory ? 'active' : ''}" onclick="filterMemories('')" style="font-family:var(--font-mono);font-size:10px;padding:4px 10px;border-radius:100px;background:${!filterCategory ? 'rgba(0,212,255,0.15)' : 'transparent'};color:${!filterCategory ? 'var(--accent-cyan)' : 'var(--text-muted)'};border:1px solid ${!filterCategory ? 'rgba(0,212,255,0.3)' : 'var(--border-dim)'};cursor:pointer">ALL (${memories.length})</button>
-      ${Object.entries(categories).map(([cat, count]) => `
-        <button class="memory-filter-btn ${filterCategory === cat ? 'active' : ''}" onclick="filterMemories('${cat}')" style="font-family:var(--font-mono);font-size:10px;padding:4px 10px;border-radius:100px;background:${filterCategory === cat ? 'rgba(0,212,255,0.15)' : 'transparent'};color:${filterCategory === cat ? 'var(--accent-cyan)' : 'var(--text-muted)'};border:1px solid ${filterCategory === cat ? 'rgba(0,212,255,0.3)' : 'var(--border-dim)'};cursor:pointer">${catIcons[cat] || '📁'} ${cat.toUpperCase()} (${count})</button>
-      `).join('')}
-    `;
-  }
-
-  if (memories.length === 0) {
-    grid.innerHTML = `
-      <div style="grid-column:1/-1;text-align:center;padding:var(--sp-16);color:var(--text-muted)">
-        <div style="font-family:var(--font-display);font-size:var(--text-lg);margin-bottom:var(--sp-3)">${searchQuery || filterCategory ? 'No memories match your filters' : 'Memory banks empty'}</div>
-        <div style="font-size:var(--text-sm)">Start a conversation or save notes to populate memory banks.</div>
-      </div>`;
-    return;
-  }
-
-  grid.innerHTML = memories.map(m => {
-    let tags = [];
-    try { tags = JSON.parse(m.tags || '[]'); } catch {}
-    if (typeof tags === 'string') try { tags = JSON.parse(tags); } catch { tags = []; }
-    const importance = m.importance || 5;
-    const category = m.category || 'general';
-    const catIcons = { technical: '💻', schedule: '📅', ideas: '💡', knowledge: '📚', contacts: '👤', financial: '💰', preferences: '⚙️', general: '📁' };
-    const impColor = importance >= 8 ? '#ef4444' : importance >= 6 ? '#f59e0b' : importance >= 4 ? '#00d4ff' : '#475569';
-
-    return `
-      <div class="memory-node" style="position:relative">
-        <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:var(--sp-2)">
-          <div style="display:flex;align-items:center;gap:var(--sp-2)">
-            <span style="font-size:0.9rem">${catIcons[category] || '📁'}</span>
-            <div class="memory-title">${escHtml(m.title)}</div>
-          </div>
-          <div style="display:flex;align-items:center;gap:4px">
-            <span style="font-family:var(--font-mono);font-size:9px;padding:1px 6px;border-radius:var(--radius-sm);background:${impColor}22;color:${impColor};border:1px solid ${impColor}44" title="Importance: ${importance}/10">IMP:${importance}</span>
-          </div>
-        </div>
-        <div class="memory-content">${escHtml(m.content)}</div>
-        ${tags.length ? `
-          <div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:var(--sp-3)">
-            ${tags.map(t => `<span style="font-family:var(--font-mono);font-size:10px;padding:2px 6px;border-radius:100px;background:rgba(0,212,255,0.08);color:var(--accent-cyan);border:1px solid rgba(0,212,255,0.2)">${escHtml(typeof t === 'string' ? t : String(t))}</span>`).join('')}
-          </div>` : ''}
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-top:var(--sp-3)">
-          <div style="display:flex;align-items:center;gap:var(--sp-2)">
-            <span style="font-family:var(--font-mono);font-size:10px;padding:1px 6px;border-radius:var(--radius-sm);background:rgba(100,116,139,0.1);color:var(--text-faint);text-transform:uppercase">${escHtml(category)}</span>
-            <span class="memory-date">${formatDateTime(m.created_at)}</span>
-          </div>
-          <button onclick="deleteMemory(${m.id})" style="color:var(--text-faint);width:20px;height:20px;display:flex;align-items:center;justify-content:center" aria-label="Delete memory">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-          </button>
-        </div>
-      </div>`;
-  }).join('');
-}
-
-window.filterMemories = function(cat) {
-  const searchVal = $('memory-search')?.value || '';
-  loadMemoryEnhanced(searchVal, cat);
-};
-
-// ═══════════════════════════════════════════════════════
-//  BRIEFINGS (P7) — Intelligence Dashboard
-// ═══════════════════════════════════════════════════════
-async function loadBriefings() {
-  const [briefings, analytics] = await Promise.all([
-    api('briefings') || [],
-    api('analytics').catch(() => null),
-  ]);
-
-  const briefingsList = briefings || [];
-
-  // Analytics summary
-  const analyticsPanel = $('briefings-analytics');
-  if (analyticsPanel && analytics) {
-    const totalConvos = analytics.total_conversations || 0;
-    const sentimentDist = analytics.sentiment_distribution || {};
-    const activeHours = analytics.active_hours || [];
-    const memoryGrowth = analytics.memory_growth || {};
-    const topIntents = analytics.top_intents || [];
-
-    // Build sentiment mini-chart
-    const sentiments = ['positive', 'neutral', 'negative'];
-    const sentColors = { positive: '#10b981', neutral: '#64748b', negative: '#ef4444' };
-    const totalSent = sentiments.reduce((s, k) => s + (sentimentDist[k] || 0), 0) || 1;
-
-    analyticsPanel.innerHTML = `
-      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:var(--sp-4);margin-bottom:var(--sp-5)">
-        <div class="hud-panel" style="padding:var(--sp-4);text-align:center">
-          <div style="font-family:var(--font-mono);font-size:var(--text-2xl);font-weight:700;color:var(--accent-cyan)">${totalConvos}</div>
-          <div style="font-family:var(--font-mono);font-size:10px;color:var(--text-faint);text-transform:uppercase">Total Conversations</div>
-        </div>
-        <div class="hud-panel" style="padding:var(--sp-4)">
-          <div style="font-family:var(--font-mono);font-size:10px;color:var(--text-faint);text-transform:uppercase;margin-bottom:var(--sp-2)">Sentiment Distribution</div>
-          <div style="display:flex;gap:2px;height:24px;border-radius:var(--radius-sm);overflow:hidden">
-            ${sentiments.map(s => {
-              const pct = Math.round(((sentimentDist[s] || 0) / totalSent) * 100);
-              return pct > 0 ? `<div style="width:${pct}%;background:${sentColors[s]};position:relative" title="${s}: ${pct}%"></div>` : '';
-            }).join('')}
-          </div>
-          <div style="display:flex;justify-content:space-between;margin-top:4px">
-            ${sentiments.map(s => `<span style="font-family:var(--font-mono);font-size:9px;color:${sentColors[s]}">${s.charAt(0).toUpperCase() + s.slice(1)} ${sentimentDist[s] || 0}</span>`).join('')}
-          </div>
-        </div>
-        <div class="hud-panel" style="padding:var(--sp-4)">
-          <div style="font-family:var(--font-mono);font-size:10px;color:var(--text-faint);text-transform:uppercase;margin-bottom:var(--sp-2)">Peak Activity Hours</div>
-          <div style="display:flex;align-items:flex-end;gap:2px;height:32px">
-            ${Array.from({length:24}, (_, h) => {
-              const count = activeHours.find(a => a.hour === h)?.count || 0;
-              const maxCount = Math.max(...activeHours.map(a => a.count || 0), 1);
-              const barH = Math.max(2, Math.round((count / maxCount) * 32));
-              const isActive = count > maxCount * 0.5;
-              return `<div style="flex:1;height:${barH}px;background:${isActive ? 'var(--accent-cyan)' : 'var(--bg-dim)'};border-radius:1px" title="${h}:00 — ${count} msgs"></div>`;
-            }).join('')}
-          </div>
-          <div style="display:flex;justify-content:space-between;margin-top:2px">
-            <span style="font-family:var(--font-mono);font-size:8px;color:var(--text-faint)">00h</span>
-            <span style="font-family:var(--font-mono);font-size:8px;color:var(--text-faint)">12h</span>
-            <span style="font-family:var(--font-mono);font-size:8px;color:var(--text-faint)">23h</span>
-          </div>
-        </div>
+    content.innerHTML = `
+      <div class="view-header">
+        <h1 class="view-title">Memory Bank</h1>
+        <button class="btn btn-primary" onclick="showNewMemoryModal()">+ Store Memory</button>
       </div>
-      ${topIntents.length > 0 ? `
-        <div class="hud-panel" style="padding:var(--sp-4);margin-bottom:var(--sp-5)">
-          <div style="font-family:var(--font-mono);font-size:10px;color:var(--text-faint);text-transform:uppercase;margin-bottom:var(--sp-3)">Top Intents</div>
-          <div style="display:flex;flex-wrap:wrap;gap:var(--sp-2)">
-            ${topIntents.slice(0, 10).map(i => `<span style="font-family:var(--font-mono);font-size:10px;padding:3px 10px;border-radius:100px;background:rgba(0,212,255,0.08);color:var(--accent-cyan);border:1px solid rgba(0,212,255,0.2)">${escHtml(i.intent || i)} <span style="color:var(--text-faint)">(${i.count || ''})</span></span>`).join('')}
-          </div>
-        </div>` : ''}
+      ${
+        State.data.memories.length === 0
+          ? '<div class="empty-state-full"><p>No memories stored yet.</p></div>'
+          : `<div class="memory-list">${State.data.memories.map(m => renderMemoryItem(m)).join('')}</div>`
+      }
     `;
+  } catch (err) {
+    content.innerHTML = `<div class="error-state"><h2>Error</h2><p>${escapeHtml(err.message)}</p></div>`;
   }
+}
 
-  // Briefings list
-  const container = $('briefings-list');
-  if (!container) return;
+function renderMemoryItem(m) {
+  return `
+    <div class="memory-item">
+      <div class="memory-item-header">
+        <span class="memory-category">${escapeHtml(m.category || 'general')}</span>
+        <span class="memory-date">${formatDateTime(m.created_at)}</span>
+        <button class="btn btn-sm btn-danger" onclick="deleteMemory('${escapeHtml(m.id)}', '${escapeHtml(m.content.substring(0, 30))}…')">✕</button>
+      </div>
+      <div class="memory-content">${escapeHtml(m.content)}</div>
+    </div>
+  `;
+}
 
-  if (briefingsList.length === 0) {
-    container.innerHTML = `
-      <div style="text-align:center;padding:var(--sp-12);color:var(--text-muted)">
-        <div style="font-family:var(--font-display);font-size:var(--text-lg);margin-bottom:var(--sp-3)">No briefings generated yet</div>
-        <div style="font-size:var(--text-sm)">JARVIS will generate intelligence briefings as interaction patterns emerge.</div>
-      </div>`;
-    return;
+function showNewMemoryModal() {
+  showModal(
+    'Store Memory',
+    `<label>Memory<textarea id="mMemContent" class="modal-input" rows="4" placeholder="What should I remember?" autofocus></textarea></label>
+     <label>Category
+       <select id="mMemCategory" class="modal-input">
+         <option value="general">General</option>
+         <option value="preference">Preference</option>
+         <option value="fact">Fact</option>
+         <option value="instruction">Instruction</option>
+         <option value="context">Context</option>
+       </select>
+     </label>`,
+    async () => {
+      const content  = document.getElementById('mMemContent')?.value?.trim();
+      const category = document.getElementById('mMemCategory')?.value || 'general';
+      if (!content) { showToast('Memory content is required.', 'warning'); return; }
+      await saveMemoryAction(content, category);
+    }
+  );
+}
+
+async function saveMemoryAction(content, category) {
+  try {
+    setStatus('processing');
+    await callApi('save_memory', { content, category });
+    const msg = fillTemplate(pickRandom(JARVIS_RESPONSES.memory_saved), { user: State.userName });
+    showToast(msg, 'success');
+    speakText(msg);
+    setStatus('online');
+    renderMemory();
+  } catch (err) {
+    showToast('Failed to save memory: ' + err.message, 'error');
+    setStatus('error');
   }
+}
 
-  const typeIcons = { daily: '📋', weekly: '📊', insight: '💡', recommendation: '🎯', alert: '⚠️' };
-  const typeColors = { daily: 'var(--accent-cyan)', weekly: '#8b5cf6', insight: '#f59e0b', recommendation: '#10b981', alert: '#ef4444' };
-
-  container.innerHTML = briefingsList.map(b => {
-    let metrics = {};
-    try { metrics = JSON.parse(b.metrics_json || '{}'); } catch {}
-    let recommendations = [];
-    try { recommendations = JSON.parse(b.recommendations_json || '[]'); } catch {}
-    const icon = typeIcons[b.type] || '📋';
-    const color = typeColors[b.type] || 'var(--accent-cyan)';
-
-    return `
-      <div class="hud-panel" style="padding:var(--sp-5);margin-bottom:var(--sp-4);border-left:3px solid ${color}">
-        <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:var(--sp-3)">
-          <div style="display:flex;align-items:center;gap:var(--sp-2)">
-            <span style="font-size:1.1rem">${icon}</span>
-            <div>
-              <div style="font-family:var(--font-mono);font-size:var(--text-sm);font-weight:600;color:var(--text-primary)">${escHtml(b.title)}</div>
-              <div style="font-family:var(--font-mono);font-size:10px;color:var(--text-faint);text-transform:uppercase">${escHtml(b.type || 'briefing')} BRIEFING</div>
-            </div>
-          </div>
-          <span style="font-family:var(--font-mono);font-size:var(--text-xs);color:var(--text-faint)">${formatDateTime(b.created_at)}</span>
-        </div>
-        ${b.content ? `<div style="font-size:var(--text-sm);color:var(--text-muted);line-height:1.6;margin-bottom:var(--sp-3)">${escHtml(b.content)}</div>` : ''}
-        ${recommendations.length > 0 ? `
-          <div style="margin-top:var(--sp-3)">
-            <div style="font-family:var(--font-mono);font-size:10px;color:var(--text-faint);text-transform:uppercase;margin-bottom:var(--sp-2)">Recommendations</div>
-            <ul style="margin:0;padding-left:var(--sp-5);font-size:var(--text-xs);color:var(--text-muted)">
-              ${recommendations.map(r => `<li style="margin-bottom:2px">${escHtml(typeof r === 'string' ? r : r.text || JSON.stringify(r))}</li>`).join('')}
-            </ul>
-          </div>` : ''}
-      </div>`;
-  }).join('');
+async function deleteMemory(id, preview) {
+  showModal(
+    'Delete Memory',
+    `<p>Delete memory: <strong>${escapeHtml(preview)}</strong>?</p>`,
+    async () => {
+      try {
+        await callApi('delete_memory', { id });
+        showToast('Memory deleted.', 'success');
+        renderMemory();
+      } catch (err) {
+        showToast('Failed to delete: ' + err.message, 'error');
+      }
+    }
+  );
 }
 
 // ═══════════════════════════════════════════════════════
-//  CHAT — Sentiment Indicators (P4/P7)
+//  BRIEFINGS
 // ═══════════════════════════════════════════════════════
-function getSentimentIndicator(sentiment) {
-  if (!sentiment) return '';
-  const indicators = {
-    positive: { icon: '🟢', label: 'Positive' },
-    negative: { icon: '🔴', label: 'Negative' },
-    neutral: { icon: '⚪', label: 'Neutral' },
-    excited: { icon: '⚡', label: 'Excited' },
-    frustrated: { icon: '😤', label: 'Frustrated' },
-    curious: { icon: '🔍', label: 'Curious' },
-  };
-  const s = indicators[sentiment] || indicators['neutral'];
-  return `<span style="font-size:10px;margin-left:4px" title="Mood: ${s.label}">${s.icon}</span>`;
+
+async function renderBriefings() {
+  const content = UI.mainContent();
+  try {
+    const res = await callApi('list_briefings');
+    State.data.briefings = res.briefings || [];
+
+    content.innerHTML = `
+      <div class="view-header">
+        <h1 class="view-title">Briefings</h1>
+        <button class="btn btn-primary" onclick="showNewBriefingModal()">+ New Briefing</button>
+      </div>
+      ${
+        State.data.briefings.length === 0
+          ? '<div class="empty-state-full"><p>No briefings found.</p></div>'
+          : `<div class="briefing-list">${State.data.briefings.map(b => renderBriefingItem(b)).join('')}</div>`
+      }
+    `;
+  } catch (err) {
+    content.innerHTML = `<div class="error-state"><h2>Error</h2><p>${escapeHtml(err.message)}</p></div>`;
+  }
+}
+
+function renderBriefingItem(b) {
+  return `
+    <div class="briefing-item">
+      <div class="briefing-header">
+        <span class="briefing-title">${escapeHtml(b.title)}</span>
+        <span class="briefing-date">${formatDateTime(b.created_at)}</span>
+        <button class="btn btn-sm" onclick="viewBriefing('${escapeHtml(b.id)}')">View</button>
+        <button class="btn btn-sm btn-danger" onclick="deleteBriefing('${escapeHtml(b.id)}', '${escapeHtml(b.title)}')">✕</button>
+      </div>
+      <div class="briefing-summary">${escapeHtml((b.content || '').substring(0, 150))}${(b.content || '').length > 150 ? '…' : ''}</div>
+    </div>
+  `;
+}
+
+async function viewBriefing(id) {
+  const briefing = State.data.briefings.find(b => b.id === id);
+  if (!briefing) return;
+  showModal(
+    escapeHtml(briefing.title),
+    `<div class="briefing-full-content">${escapeHtml(briefing.content || '').replace(/\n/g, '<br>')}</div>`,
+  );
+}
+
+function showNewBriefingModal() {
+  showModal(
+    'New Briefing',
+    `<label>Title<input id="mBriefTitle" class="modal-input" placeholder="Briefing title" autofocus /></label>
+     <label>Content<textarea id="mBriefContent" class="modal-input" rows="6" placeholder="Briefing content…"></textarea></label>`,
+    async () => {
+      const title   = document.getElementById('mBriefTitle')?.value?.trim();
+      const content = document.getElementById('mBriefContent')?.value?.trim();
+      if (!title) { showToast('Title is required.', 'warning'); return; }
+      await saveBriefingAction(title, content);
+    }
+  );
+}
+
+async function saveBriefingAction(title, content) {
+  try {
+    setStatus('processing');
+    await callApi('save_briefing', { title, content });
+    showToast('Briefing saved.', 'success');
+    setStatus('online');
+    renderBriefings();
+  } catch (err) {
+    showToast('Failed to save briefing: ' + err.message, 'error');
+    setStatus('error');
+  }
+}
+
+async function deleteBriefing(id, title) {
+  showModal(
+    'Delete Briefing',
+    `<p>Delete briefing <strong>${escapeHtml(title)}</strong>?</p>`,
+    async () => {
+      try {
+        await callApi('delete_briefing', { id });
+        showToast(`Briefing "${title}" deleted.`, 'success');
+        renderBriefings();
+      } catch (err) {
+        showToast('Failed to delete: ' + err.message, 'error');
+      }
+    }
+  );
 }
 
 // ═══════════════════════════════════════════════════════
 //  SETTINGS
 // ═══════════════════════════════════════════════════════
-async function loadSettings() {
-  const settings = await api('settings') || {};
-  if (settings.user_name) {
-    State.userName = settings.user_name;
-    const el = $('setting-username');
-    if (el) el.value = settings.user_name;
-  }
-  if (settings.voice_rate) {
-    State.voiceSettings.rate = parseFloat(settings.voice_rate);
-    const el = $('setting-voice-rate');
-    if (el) { el.value = settings.voice_rate; $('voice-rate-val').textContent = settings.voice_rate; }
-  }
-  if (settings.voice_pitch) {
-    State.voiceSettings.pitch = parseFloat(settings.voice_pitch);
-    const el = $('setting-voice-pitch');
-    if (el) { el.value = settings.voice_pitch; $('voice-pitch-val').textContent = settings.voice_pitch; }
-  }
-  if (settings.voice_volume) {
-    State.voiceSettings.volume = parseFloat(settings.voice_volume);
-    const el = $('setting-voice-volume');
-    if (el) { el.value = settings.voice_volume; $('voice-volume-val').textContent = settings.voice_volume; }
-  }
-  // ElevenLabs settings
-  if (settings.el_enabled !== undefined) {
-    State.elevenLabs.enabled = settings.el_enabled === 'true' || settings.el_enabled === true;
-    const el = $('setting-el-enabled');
-    if (el) el.checked = State.elevenLabs.enabled;
-  }
-  if (settings.el_apikey) {
-    State.elevenLabs.apiKey = settings.el_apikey;
-    const el = $('setting-el-apikey');
-    if (el) el.value = settings.el_apikey;
-  } else {
-    // Use default from State if not saved yet
-    const el = $('setting-el-apikey');
-    if (el && State.elevenLabs.apiKey) el.value = State.elevenLabs.apiKey;
-  }
-  if (settings.el_voiceid) {
-    State.elevenLabs.voiceId = settings.el_voiceid;
-    const el = $('setting-el-voiceid');
-    if (el) el.value = settings.el_voiceid;
-  } else {
-    const el = $('setting-el-voiceid');
-    if (el && State.elevenLabs.voiceId) el.value = State.elevenLabs.voiceId;
-  }
-  if (settings.el_model) {
-    State.elevenLabs.model = settings.el_model;
-    const el = $('setting-el-model');
-    if (el) el.value = settings.el_model;
-  }
-  if (settings.el_stability) {
-    State.elevenLabs.stability = parseFloat(settings.el_stability);
-    const el = $('setting-el-stability');
-    if (el) { el.value = settings.el_stability; const v = $('el-stability-val'); if (v) v.textContent = settings.el_stability; }
-  }
-  if (settings.el_similarity) {
-    State.elevenLabs.similarityBoost = parseFloat(settings.el_similarity);
-    const el = $('setting-el-similarity');
-    if (el) { el.value = settings.el_similarity; const v = $('el-similarity-val'); if (v) v.textContent = settings.el_similarity; }
-  }
-  if (settings.el_style) {
-    State.elevenLabs.style = parseFloat(settings.el_style);
-    const el = $('setting-el-style');
-    if (el) { el.value = settings.el_style; const v = $('el-style-val'); if (v) v.textContent = settings.el_style; }
-  }
-  // Update ElevenLabs status dot
-  _updateElStatusDot();
-  populateVoiceSelector();
+
+function renderSettings() {
+  const content = UI.mainContent();
+  content.innerHTML = `
+    <div class="view-header">
+      <h1 class="view-title">Settings</h1>
+    </div>
+    <div class="settings-grid">
+
+      <div class="card">
+        <div class="card-header"><h2 class="card-title">Identity</h2></div>
+        <div class="card-body">
+          <label>Display Name
+            <input id="sUserName" class="modal-input" value="${escapeHtml(State.userName)}" placeholder="Your name" />
+          </label>
+          <button class="btn btn-primary" style="margin-top:12px" onclick="saveIdentitySettings()">Save</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header"><h2 class="card-title">Appearance</h2></div>
+        <div class="card-body">
+          <div class="setting-row">
+            <span>Theme</span>
+            <button class="btn btn-sm" onclick="toggleTheme()">${State.theme === 'dark' ? 'Switch to Light' : 'Switch to Dark'}</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header"><h2 class="card-title">API Configuration</h2></div>
+        <div class="card-body">
+          <div class="setting-row">
+            <span>Endpoint</span>
+            <span class="setting-value">${State.apiEndpoint ? '<span class="badge badge-active">Connected</span>' : '<span class="badge badge-error">Not Set</span>'}</span>
+          </div>
+          ${State.apiEndpoint ? `<div class="setting-url">${escapeHtml(State.apiEndpoint)}</div>` : ''}
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header"><h2 class="card-title">Data Management</h2></div>
+        <div class="card-body">
+          <button class="btn btn-danger" onclick="confirmClearData()">Clear All Local Data</button>
+          <p class="setting-note">This clears your local session. Server data is unaffected.</p>
+        </div>
+      </div>
+
+    </div>
+  `;
+}
+
+function saveIdentitySettings() {
+  const name = document.getElementById('sUserName')?.value?.trim();
+  if (!name) { showToast('Name cannot be empty.', 'warning'); return; }
+  State.userName = name;
+  localStorage.setItem('jarvis_user', name);
+  showToast('Identity updated.', 'success');
   updateGreeting();
+}
 
-  // Continuous mode & wake word — load from settings and auto-enable
-  const cmEnabled = settings.continuous_mode === 'true' || settings.continuous_mode === true;
-  State.continuousMode = cmEnabled;
-  const cmToggle = $('setting-continuous');
-  if (cmToggle) cmToggle.checked = cmEnabled;
+function confirmClearData() {
+  showModal(
+    'Clear All Data',
+    '<p>This will clear your local session data. Server data is unaffected. Continue?</p>',
+    () => {
+      localStorage.clear();
+      showToast('Local data cleared. Reloading…', 'info');
+      setTimeout(() => location.reload(), 1500);
+    }
+  );
+}
 
-  const wwEnabled = settings.wake_word === 'true' || settings.wake_word === true;
-  const wwToggle = $('setting-wakeword');
-  if (wwToggle) wwToggle.checked = wwEnabled;
-  // Auto-start wake word after boot if enabled
-  if (wwEnabled) {
-    setTimeout(() => startWakeWordDetection(), 1500);
+// ═══════════════════════════════════════════════════════
+//  CHAT / COMMAND PROCESSING
+// ═══════════════════════════════════════════════════════
+
+async function processCommand(input) {
+  const text = input.trim();
+  if (!text) return;
+
+  const chatInput = UI.chatInput();
+  if (chatInput) chatInput.value = '';
+
+  setStatus('thinking');
+  const thinkingMsg = fillTemplate(pickRandom(JARVIS_RESPONSES.thinking), { name: State.userName });
+  speakText(thinkingMsg);
+
+  try {
+    const res = await callApi('chat', { message: text, user: State.userName });
+    const reply = res.reply || res.response || res.message || JSON.stringify(res);
+    setStatus('online');
+    displayChatReply(text, reply);
+    speakText(reply);
+    // Refresh current view
+    renderView(State.currentView);
+  } catch (err) {
+    setStatus('error');
+    const errMsg = 'I encountered an error processing that request: ' + err.message;
+    displayChatReply(text, errMsg);
+    speakText(errMsg);
   }
 }
 
-async function saveSettings() {
-  const settings = {
-    user_name: $('setting-username')?.value || 'Sir',
-    voice_rate: parseFloat($('setting-voice-rate')?.value || '0.9'),
-    voice_pitch: parseFloat($('setting-voice-pitch')?.value || '1.0'),
-    voice_volume: parseFloat($('setting-voice-volume')?.value || '1.0'),
-    // ElevenLabs
-    el_enabled: $('setting-el-enabled')?.checked ? 'true' : 'false',
-    el_apikey: $('setting-el-apikey')?.value || '',
-    el_voiceid: $('setting-el-voiceid')?.value || '',
-    el_model: $('setting-el-model')?.value || 'eleven_multilingual_v2',
-    el_stability: parseFloat($('setting-el-stability')?.value || '0.5'),
-    el_similarity: parseFloat($('setting-el-similarity')?.value || '0.75'),
-    el_style: parseFloat($('setting-el-style')?.value || '0.4'),
-    // Voice modes
-    continuous_mode: $('setting-continuous')?.checked ? 'true' : 'false',
-    wake_word: $('setting-wakeword')?.checked ? 'true' : 'false',
+function displayChatReply(userMsg, botReply) {
+  const content = UI.mainContent();
+  const existing = content.querySelector('.chat-overlay');
+  if (existing) existing.remove();
+
+  const overlay = document.createElement('div');
+  overlay.className = 'chat-overlay';
+  overlay.innerHTML = `
+    <div class="chat-bubble user-bubble">
+      <span class="chat-label">You</span>
+      <div class="chat-text">${escapeHtml(userMsg)}</div>
+    </div>
+    <div class="chat-bubble jarvis-bubble">
+      <span class="chat-label">JARVIS</span>
+      <div class="chat-text">${escapeHtml(botReply)}</div>
+    </div>
+    <button class="btn btn-sm" onclick="this.parentElement.remove()" style="margin-top:12px">Dismiss</button>
+  `;
+  content.prepend(overlay);
+}
+
+// ═══════════════════════════════════════════════════════
+//  VOICE
+// ═══════════════════════════════════════════════════════
+
+function initVoice() {
+  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SpeechRecognition) return;
+  State.recognition = new SpeechRecognition();
+  State.recognition.continuous    = false;
+  State.recognition.interimResults = false;
+  State.recognition.lang           = 'en-US';
+  State.recognition.onresult = (e) => {
+    const transcript = e.results[0][0].transcript;
+    const chatInput = UI.chatInput();
+    if (chatInput) chatInput.value = transcript;
+    processCommand(transcript);
   };
+  State.recognition.onend = () => {
+    State.voiceActive = false;
+    const btn = UI.voiceBtn();
+    if (btn) btn.classList.remove('active');
+    speakText(pickRandom(JARVIS_RESPONSES.voice_end));
+  };
+  State.recognition.onerror = (e) => {
+    State.voiceActive = false;
+    const btn = UI.voiceBtn();
+    if (btn) btn.classList.remove('active');
+    showToast('Voice recognition error: ' + e.error, 'error');
+  };
+}
 
-  State.userName = settings.user_name;
-  State.voiceSettings.rate = settings.voice_rate;
-  State.voiceSettings.pitch = settings.voice_pitch;
-  State.voiceSettings.volume = settings.voice_volume;
-
-  // ElevenLabs state sync
-  State.elevenLabs.enabled = settings.el_enabled === 'true';
-  State.elevenLabs.apiKey = settings.el_apikey;
-  State.elevenLabs.voiceId = settings.el_voiceid;
-  State.elevenLabs.model = settings.el_model;
-  State.elevenLabs.stability = settings.el_stability;
-  State.elevenLabs.similarityBoost = settings.el_similarity;
-  State.elevenLabs.style = settings.el_style;
-
-  // Voice selection
-  const voiceSel = $('setting-voice');
-  if (voiceSel && voiceSel.value) {
-    const v = State.availableVoices.find(v => v.voiceURI === voiceSel.value);
-    if (v) State.selectedVoice = v;
+function toggleVoice() {
+  if (!State.recognition) {
+    showToast('Voice recognition is not supported in this browser.', 'warning');
+    return;
   }
-
-  // Sync voice selection URI into settings for persistence check
-  const voiceSelSave = $('setting-voice');
-  if (voiceSelSave && voiceSelSave.value) {
-    const v = State.availableVoices.find(v => v.voiceURI === voiceSelSave.value);
-    if (v) { State.selectedVoice = v; State.voiceSettings.voiceURI = v.voiceURI; }
+  if (State.voiceActive) {
+    State.recognition.stop();
+    State.voiceActive = false;
+    UI.voiceBtn()?.classList.remove('active');
+  } else {
+    State.recognition.start();
+    State.voiceActive = true;
+    UI.voiceBtn()?.classList.add('active');
+    const msg = fillTemplate(pickRandom(JARVIS_RESPONSES.voice_start), { name: State.userName });
+    speakText(msg);
   }
+}
 
-  await api('settings', 'POST', settings);
-  _updateElStatusDot();
-  updateGreeting();
-  playSuccessSound();
-  showToast('Configuration saved, ' + settings.user_name + '.');
+function speakText(text) {
+  if (!window.speechSynthesis) return;
+  window.speechSynthesis.cancel();
+  const utter = new SpeechSynthesisUtterance(text);
+  utter.rate   = 0.95;
+  utter.pitch  = 0.85;
+  utter.volume = 0.9;
+  const voices = window.speechSynthesis.getVoices();
+  const preferred = voices.find(v => v.name.includes('Google UK English Male'))
+    || voices.find(v => v.name.includes('Daniel'))
+    || voices.find(v => v.lang === 'en-GB' && v.name.includes('Male'))
+    || voices.find(v => v.lang === 'en-GB')
+    || voices.find(v => v.lang.startsWith('en'));
+  if (preferred) utter.voice = preferred;
+  window.speechSynthesis.speak(utter);
 }
 
 // ═══════════════════════════════════════════════════════
-//  MODALS
+//  GREETING
 // ═══════════════════════════════════════════════════════
-function openModal(id) {
-  const modal = $(id);
-  if (!modal) return;
-  modal.classList.remove('hidden');
-  playClickSound();
-  // Focus first input
-  setTimeout(() => {
-    const input = modal.querySelector('input, textarea, select');
-    if (input) input.focus();
-  }, 50);
-}
 
-function closeModal(id) {
-  const modal = $(id);
-  if (modal) modal.classList.add('hidden');
+function updateGreeting() {
+  const el = UI.greetingEl();
+  if (!el) return;
+  el.textContent = `Good ${timeOfDay()}, ${State.userName}.`;
 }
 
 // ═══════════════════════════════════════════════════════
 //  EVENT LISTENERS
 // ═══════════════════════════════════════════════════════
-function bindEvents() {
-  // Unlock audio on first user interaction (for ElevenLabs TTS autoplay)
-  document.addEventListener('click', _unlockAudio, { once: true });
-  document.addEventListener('touchstart', _unlockAudio, { once: true });
 
-  // Navigation (sidebar + bottom bar)
-  $$('[data-view]').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const view = btn.dataset.view;
-      if (view) navigate(view);
-    });
+function initEventListeners() {
+  // Nav
+  UI.navLinks().forEach(link => {
+    link.addEventListener('click', () => navigate(link.dataset.view));
   });
-
-  // Arc reactor click / keyboard
-  const arc = $('arc-reactor');
-  if (arc) {
-    arc.addEventListener('click', (e) => {
-      if (e.target.closest('.arc-mic-btn')) return; // mic btn handles itself
-      toggleListening();
-    });
-    arc.addEventListener('keydown', e => {
-      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleListening(); }
-    });
-  }
-
-  // Mic buttons
-  const micBtn = $('mic-btn');
-  if (micBtn) {
-    micBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      toggleListening();
-    });
-  }
-  const chatMicBtn = $('chat-mic-btn');
-  if (chatMicBtn) chatMicBtn.addEventListener('click', toggleListening);
 
   // Chat input
-  const chatInput = $('chat-input');
-  const chatSend = $('chat-send');
-  if (chatInput) {
-    chatInput.addEventListener('keydown', e => {
+  const sendBtn   = UI.sendBtn();
+  const chatInput = UI.chatInput();
+  if (sendBtn && chatInput) {
+    sendBtn.addEventListener('click', () => processCommand(chatInput.value));
+    chatInput.addEventListener('keydown', (e) => {
       if (e.key === 'Enter' && !e.shiftKey) {
         e.preventDefault();
-        const val = chatInput.value.trim();
-        if (val) { chatInput.value = ''; sendUserMessage(val); }
+        processCommand(chatInput.value);
       }
     });
   }
-  if (chatSend) {
-    chatSend.addEventListener('click', () => {
-      const val = chatInput?.value.trim();
-      if (val) { chatInput.value = ''; sendUserMessage(val); }
-    });
+
+  // Voice
+  const voiceBtn = UI.voiceBtn();
+  if (voiceBtn) voiceBtn.addEventListener('click', toggleVoice);
+
+  // Theme
+  const themeBtn = UI.themeToggleBtn();
+  if (themeBtn) themeBtn.addEventListener('click', toggleTheme);
+
+  // Sidebar toggle (mobile)
+  const menuBtn = document.getElementById('menuToggleBtn');
+  const sidebar = UI.sidebar();
+  if (menuBtn && sidebar) {
+    menuBtn.addEventListener('click', () => sidebar.classList.toggle('open'));
+  }
+}
+
+// ═══════════════════════════════════════════════════════
+//  SOUNDS
+// ═══════════════════════════════════════════════════════
+
+function playSuccessSound() {
+  try {
+    const ctx  = new (window.AudioContext || window.webkitAudioContext)();
+    const osc  = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.type      = 'sine';
+    osc.frequency.setValueAtTime(523.25, ctx.currentTime);
+    osc.frequency.setValueAtTime(659.25, ctx.currentTime + 0.1);
+    osc.frequency.setValueAtTime(783.99, ctx.currentTime + 0.2);
+    gain.gain.setValueAtTime(0.3, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.5);
+    osc.start(ctx.currentTime);
+    osc.stop(ctx.currentTime + 0.5);
+  } catch (_) { /* AudioContext not available */ }
+}
+
+// ═══════════════════════════════════════════════════════
+//  PARTICLE BACKGROUND
+// ═══════════════════════════════════════════════════════
+
+function initParticles() {
+  const canvas = document.getElementById('particleCanvas');
+  if (!canvas) return;
+  const ctx    = canvas.getContext('2d');
+  let particles = [];
+  let animId;
+
+  function resize() {
+    canvas.width  = window.innerWidth;
+    canvas.height = window.innerHeight;
   }
 
-  // New project
-  const newProjBtn = $('new-project-btn');
-  const quickProjBtn = $('quick-project-btn');
-  if (newProjBtn) newProjBtn.addEventListener('click', () => openModal('modal-new-project'));
-  if (quickProjBtn) quickProjBtn.addEventListener('click', () => { navigate('projects'); setTimeout(() => openModal('modal-new-project'), 200); });
-
-  const saveProjBtn = $('save-project-btn');
-  if (saveProjBtn) {
-    saveProjBtn.addEventListener('click', async () => {
-      const name = $('proj-name')?.value.trim();
-      if (!name) { showToast('Please enter a project name.'); return; }
-      const p = await api('projects', 'POST', {
-        name,
-        status: $('proj-status')?.value || 'Active',
-        description: $('proj-desc')?.value || '',
+  function createParticles() {
+    particles = [];
+    const count = Math.floor((canvas.width * canvas.height) / 15000);
+    for (let i = 0; i < count; i++) {
+      particles.push({
+        x:    Math.random() * canvas.width,
+        y:    Math.random() * canvas.height,
+        vx:   (Math.random() - 0.5) * 0.4,
+        vy:   (Math.random() - 0.5) * 0.4,
+        r:    Math.random() * 1.5 + 0.5,
+        alpha: Math.random() * 0.5 + 0.1,
       });
-      closeModal('modal-new-project');
-      $('proj-name').value = ''; $('proj-desc').value = '';
-      if (p) {
-        if (window.CinematicVFX) CinematicVFX.projectInit(p.name);
-        playSuccessSound();
-        showToast(`Project "${p.name}" initialized.`);
-        loadProjects();
-        loadDashboard();
-        speakText(fillTemplate(pickRandom(JARVIS_RESPONSES.project_created), { name: p.name, user: State.userName }));
-      }
-    });
-  }
-
-  // Back to projects list
-  const backBtn = $('back-to-projects');
-  if (backBtn) {
-    backBtn.addEventListener('click', () => {
-      const detail = $('project-detail');
-      const grid = $('projects-grid');
-      if (detail) detail.style.display = 'none';
-      const listDiv = $('view-projects').querySelector(':scope > div');
-      if (listDiv) listDiv.style.display = 'block';
-      State.currentProjectId = null;
-    });
-  }
-
-  // Add task
-  const addTaskBtn = $('add-task-btn');
-  if (addTaskBtn) addTaskBtn.addEventListener('click', () => openModal('modal-new-task'));
-
-  const saveTaskBtn = $('save-task-btn');
-  if (saveTaskBtn) {
-    saveTaskBtn.addEventListener('click', async () => {
-      const title = $('task-title')?.value.trim();
-      if (!title) { showToast('Please enter a task title.'); return; }
-      const t = await api('tasks', 'POST', {
-        title,
-        description: $('task-desc')?.value || '',
-        priority: $('task-priority')?.value || 'medium',
-        project_id: State.currentProjectId,
-        status: 'todo',
-      });
-      closeModal('modal-new-task');
-      $('task-title').value = ''; $('task-desc').value = '';
-      if (t) {
-        playSuccessSound();
-        showToast(`Task "${t.title}" created.`);
-        renderKanban(State.currentProjectId);
-      }
-    });
-  }
-
-  // New research
-  const newResBtn = $('new-research-btn');
-  const quickResBtn = $('quick-research-btn');
-  if (newResBtn) newResBtn.addEventListener('click', () => openModal('modal-new-research'));
-  if (quickResBtn) quickResBtn.addEventListener('click', () => { navigate('research'); setTimeout(() => openModal('modal-new-research'), 200); });
-
-  const saveResBtn = $('save-research-btn');
-  if (saveResBtn) {
-    saveResBtn.addEventListener('click', async () => {
-      const topic = $('research-topic')?.value.trim();
-      if (!topic) { showToast('Please enter a research topic.'); return; }
-      const findingsRaw = $('research-findings')?.value || '';
-      const findings = findingsRaw.split('\n').map(l => l.trim()).filter(Boolean);
-      const r = await api('research', 'POST', {
-        topic,
-        summary: $('research-summary')?.value || '',
-        findings,
-      });
-      closeModal('modal-new-research');
-      $('research-topic').value = ''; $('research-summary').value = ''; $('research-findings').value = '';
-      if (r) {
-        if (window.CinematicVFX) CinematicVFX.researchAnalysis(r.topic);
-        playSuccessSound();
-        showToast(`Research "${r.topic}" logged.`);
-        loadResearch();
-        speakText(fillTemplate(pickRandom(JARVIS_RESPONSES.research_saved), { topic: r.topic }));
-      }
-    });
-  }
-
-  // New memory
-  const newMemBtn = $('new-memory-btn');
-  const quickMemBtn = $('quick-memory-btn');
-  if (newMemBtn) newMemBtn.addEventListener('click', () => openModal('modal-new-memory'));
-  if (quickMemBtn) quickMemBtn.addEventListener('click', () => { navigate('memory'); setTimeout(() => openModal('modal-new-memory'), 200); });
-
-  const saveMemBtn = $('save-memory-btn');
-  if (saveMemBtn) {
-    saveMemBtn.addEventListener('click', async () => {
-      const title = $('mem-title')?.value.trim();
-      const content = $('mem-content')?.value.trim();
-      if (!title || !content) { showToast('Please fill in title and content.'); return; }
-      const tagsRaw = $('mem-tags')?.value || '';
-      const tags = tagsRaw.split(',').map(t => t.trim()).filter(Boolean);
-      const m = await api('memories', 'POST', { title, content, tags });
-      closeModal('modal-new-memory');
-      $('mem-title').value = ''; $('mem-content').value = ''; $('mem-tags').value = '';
-      if (m) {
-        if (window.CinematicVFX) CinematicVFX.memoryIndex();
-        playSuccessSound();
-        showToast('Memory indexed.');
-        loadMemory();
-        if (State.currentView === 'dashboard') loadDashboard();
-        speakText(fillTemplate(pickRandom(JARVIS_RESPONSES.memory_saved), {}));
-      }
-    });
-  }
-
-  // New operation
-  const newOpBtn = $('new-operation-btn');
-  if (newOpBtn) newOpBtn.addEventListener('click', () => openModal('modal-new-operation'));
-
-  const saveOpBtn = $('save-operation-btn');
-  if (saveOpBtn) {
-    saveOpBtn.addEventListener('click', async () => {
-      const name = $('op-name')?.value.trim();
-      if (!name) { showToast('Please enter an operation name.'); return; }
-      const op = await api('operations', 'POST', { name, status: 'queued', progress: 0 });
-      closeModal('modal-new-operation');
-      $('op-name').value = '';
-      if (op) {
-        if (window.CinematicVFX) CinematicVFX.operationLaunch(op.name);
-        playSuccessSound();
-        showToast(`Operation "${op.name}" queued.`);
-        loadOperations();
-        speakText(`Operation ${op.name} queued for processing, ${State.userName}.`);
-      }
-    });
-  }
-
-  // Modal close buttons
-  $$('[data-close-modal]').forEach(btn => {
-    btn.addEventListener('click', () => closeModal(btn.dataset.closeModal));
-  });
-
-  // Click outside modal to close
-  $$('.modal-backdrop').forEach(modal => {
-    modal.addEventListener('click', e => {
-      if (e.target === modal) closeModal(modal.id);
-    });
-  });
-
-  // Escape key to close modals
-  document.addEventListener('keydown', e => {
-    if (e.key === 'Escape') {
-      $$('.modal-backdrop:not(.hidden)').forEach(m => closeModal(m.id));
     }
+  }
+
+  function draw() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    particles.forEach(p => {
+      p.x += p.vx;
+      p.y += p.vy;
+      if (p.x < 0) p.x = canvas.width;
+      if (p.x > canvas.width)  p.x = 0;
+      if (p.y < 0) p.y = canvas.height;
+      if (p.y > canvas.height) p.y = 0;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(0, 212, 255, ${p.alpha})`;
+      ctx.fill();
+    });
+    // Draw connecting lines
+    for (let i = 0; i < particles.length; i++) {
+      for (let j = i + 1; j < particles.length; j++) {
+        const dx = particles[i].x - particles[j].x;
+        const dy = particles[i].y - particles[j].y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist < 80) {
+          ctx.beginPath();
+          ctx.moveTo(particles[i].x, particles[i].y);
+          ctx.lineTo(particles[j].x, particles[j].y);
+          ctx.strokeStyle = `rgba(0, 212, 255, ${0.15 * (1 - dist / 80)})`;
+          ctx.lineWidth   = 0.5;
+          ctx.stroke();
+        }
+      }
+    }
+    animId = requestAnimationFrame(draw);
+  }
+
+  window.addEventListener('resize', () => {
+    cancelAnimationFrame(animId);
+    resize();
+    createParticles();
+    draw();
   });
 
-  // Settings sliders
-  const sliders = [
-    ['setting-voice-rate', 'voice-rate-val'],
-    ['setting-voice-pitch', 'voice-pitch-val'],
-    ['setting-voice-volume', 'voice-volume-val'],
-    ['setting-glow', 'glow-val'],
-    ['setting-anim', 'anim-val'],
+  resize();
+  createParticles();
+  draw();
+}
+
+// ═══════════════════════════════════════════════════════
+//  HUD CLOCK
+// ═══════════════════════════════════════════════════════
+
+function initClock() {
+  const el = document.getElementById('hudClock');
+  if (!el) return;
+  function tick() {
+    const now = new Date();
+    el.textContent = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  }
+  tick();
+  setInterval(tick, 1000);
+}
+
+// ═══════════════════════════════════════════════════════
+//  SCAN LINE ANIMATION
+// ═══════════════════════════════════════════════════════
+
+function initScanLines() {
+  const overlay = document.getElementById('scanLineOverlay');
+  if (!overlay) return;
+  let pos = 0;
+  setInterval(() => {
+    pos = (pos + 1) % 100;
+    overlay.style.backgroundPosition = `0 ${pos}%`;
+  }, 50);
+}
+
+// ═══════════════════════════════════════════════════════
+//  PROGRESS BARS (animated)
+// ═══════════════════════════════════════════════════════
+
+function animateProgressBars() {
+  document.querySelectorAll('.progress-fill').forEach(bar => {
+    const target = bar.style.width;
+    bar.style.width = '0%';
+    requestAnimationFrame(() => {
+      bar.style.transition = 'width 0.8s ease';
+      bar.style.width = target;
+    });
+  });
+}
+
+// Call after renders
+const _originalRenderView = renderView;
+function renderView(view) {
+  _originalRenderView(view);
+  setTimeout(animateProgressBars, 100);
+}
+
+// ═══════════════════════════════════════════════════════
+//  TYPING INDICATOR
+// ═══════════════════════════════════════════════════════
+
+function showTypingIndicator() {
+  const bar = UI.inputBar();
+  if (!bar) return;
+  let existing = bar.querySelector('.typing-indicator');
+  if (!existing) {
+    existing = document.createElement('div');
+    existing.className = 'typing-indicator';
+    existing.innerHTML = '<span></span><span></span><span></span>';
+    bar.appendChild(existing);
+  }
+  existing.classList.add('visible');
+}
+
+function hideTypingIndicator() {
+  const bar = UI.inputBar();
+  if (!bar) return;
+  bar.querySelector('.typing-indicator')?.classList.remove('visible');
+}
+
+// ═══════════════════════════════════════════════════════
+//  SIDEBAR STATS TICKER
+// ═══════════════════════════════════════════════════════
+
+function initSidebarTicker() {
+  const el = document.getElementById('sidebarTicker');
+  if (!el) return;
+  const items = [
+    'All systems nominal.',
+    'Neural net: online.',
+    'Threat level: zero.',
+    'Reactor: 100%.',
+    'Uplink: secure.',
+    'Encryption: AES-256.',
+    'Location: classified.',
   ];
-  sliders.forEach(([sliderId, valId]) => {
-    const el = $(sliderId);
-    if (el) el.addEventListener('input', () => {
-      const valEl = $(valId);
-      if (valEl) valEl.textContent = el.value;
-    });
-  });
+  let i = 0;
+  el.textContent = items[0];
+  setInterval(() => {
+    el.style.opacity = '0';
+    setTimeout(() => {
+      i = (i + 1) % items.length;
+      el.textContent = items[i];
+      el.style.opacity = '1';
+    }, 400);
+  }, 3000);
+}
 
-  // Save settings
-  const saveSettingsBtn = $('save-settings-btn');
-  if (saveSettingsBtn) saveSettingsBtn.addEventListener('click', saveSettings);
+// ═══════════════════════════════════════════════════════
+//  KEYBOARD SHORTCUTS
+// ═══════════════════════════════════════════════════════
 
-  // Test Voice button
-  const testVoiceBtn = $('test-voice-btn');
-  if (testVoiceBtn) {
-    testVoiceBtn.addEventListener('click', () => {
-      speakText(`Online and fully operational, ${State.userName}. All systems nominal. Voice calibration complete.`);
-    });
-  }
-
-  // ElevenLabs Test Voice button
-  const testElBtn = $('test-el-voice-btn');
-  if (testElBtn) testElBtn.addEventListener('click', testElevenLabsVoice);
-
-  // ElevenLabs range slider labels
-  ['setting-el-stability', 'setting-el-similarity', 'setting-el-style'].forEach(id => {
-    const el = $(id);
-    if (el) {
-      const valId = id.replace('setting-el-', 'el-') + '-val';
-      el.addEventListener('input', () => {
-        const valEl = $(valId);
-        if (valEl) valEl.textContent = el.value;
-      });
+function initKeyboardShortcuts() {
+  document.addEventListener('keydown', (e) => {
+    // Ctrl/Cmd + K → focus chat input
+    if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+      e.preventDefault();
+      UI.chatInput()?.focus();
+    }
+    // Escape → close modal
+    if (e.key === 'Escape') {
+      UI.modalOverlay()?.classList.remove('active');
+    }
+    // Ctrl/Cmd + D → dashboard
+    if ((e.ctrlKey || e.metaKey) && e.key === 'd') {
+      e.preventDefault();
+      navigate('dashboard');
     }
   });
+}
 
-  // ElevenLabs enable toggle — update status dot live
-  const elToggle = $('setting-el-enabled');
-  if (elToggle) {
-    elToggle.addEventListener('change', () => {
-      State.elevenLabs.enabled = elToggle.checked;
-      _updateElStatusDot();
-    });
-  }
+// ═══════════════════════════════════════════════════════
+//  DRAG-AND-DROP SIDEBAR REORDER (stub)
+// ═══════════════════════════════════════════════════════
 
-  // Continuous mode toggle
-  const continuousToggle = $('setting-continuous');
-  if (continuousToggle) {
-    continuousToggle.addEventListener('change', () => {
-      State.continuousMode = continuousToggle.checked;
-      if (State.continuousMode) {
-        showToast('Continuous conversation mode enabled.');
-      } else {
-        showToast('Continuous mode disabled.');
-      }
-    });
-  }
+function initDragDrop() {
+  const nav = document.querySelector('.nav-list');
+  if (!nav) return;
+  let dragged = null;
+  nav.addEventListener('dragstart', e => {
+    dragged = e.target.closest('.nav-item');
+    if (dragged) dragged.style.opacity = '0.5';
+  });
+  nav.addEventListener('dragend', e => {
+    if (dragged) dragged.style.opacity = '';
+    dragged = null;
+  });
+  nav.addEventListener('dragover', e => e.preventDefault());
+  nav.addEventListener('drop', e => {
+    e.preventDefault();
+    const target = e.target.closest('.nav-item');
+    if (target && dragged && target !== dragged) {
+      nav.insertBefore(dragged, target);
+    }
+  });
+}
 
-  // Wake word toggle
-  const wakeWordToggle = $('setting-wakeword');
-  if (wakeWordToggle) {
-    wakeWordToggle.addEventListener('change', () => {
-      if (wakeWordToggle.checked) {
-        startWakeWordDetection();
-        showToast('Wake word detection active. Say "Hey JARVIS" to activate.');
-      } else {
-        stopWakeWordDetection();
-        showToast('Wake word detection disabled.');
-      }
-    });
-  }
+// ═══════════════════════════════════════════════════════
+//  RESPONSIVE SIDEBAR
+// ═══════════════════════════════════════════════════════
 
-  // Export memories
-  const exportBtn = $('export-memories-btn');
-  if (exportBtn) {
-    exportBtn.addEventListener('click', async () => {
-      const memories = await api('memories') || [];
-      const blob = new Blob([JSON.stringify(memories, null, 2)], { type: 'application/json' });
-      const a = document.createElement('a');
-      a.href = URL.createObjectURL(blob);
-      a.download = 'jarvis-memories.json';
-      a.click();
-      showToast('Memory banks exported.');
-    });
-  }
+function initResponsiveSidebar() {
+  const sidebar = UI.sidebar();
+  const content = UI.mainContent();
+  if (!sidebar || !content) return;
+  content.addEventListener('click', () => {
+    if (window.innerWidth < 768) sidebar.classList.remove('open');
+  });
+}
 
-  // Clear conversations
-  const clearConvosBtn = $('clear-convos-btn');
-  if (clearConvosBtn) {
-    clearConvosBtn.addEventListener('click', async () => {
-      if (!confirm('Clear all conversation history?')) return;
-      await api('conversations', 'DELETE');
-      showToast('Conversation history cleared.');
-      playClickSound();
-    });
-  }
+// ═══════════════════════════════════════════════════════
+//  ONLINE / OFFLINE DETECTION
+// ═══════════════════════════════════════════════════════
 
-  // Clear memories
-  const clearMemBtn = $('clear-memories-btn');
-  if (clearMemBtn) {
-    clearMemBtn.addEventListener('click', async () => {
-      if (!confirm('Purge all memory banks? This cannot be undone.')) return;
-      await api('memories', 'DELETE');
-      showToast('Memory banks purged.');
-      loadMemory();
-      loadDashboard();
-      playErrorSound();
-    });
-  }
-
-  // Memory search
-  const memSearch = $('memory-search');
-  if (memSearch) {
-    let debounce;
-    memSearch.addEventListener('input', () => {
-      clearTimeout(debounce);
-      debounce = setTimeout(() => loadMemory(memSearch.value), 300);
-    });
-  }
-
-  // Mobile nav bottom bar
-  const isMobile = () => window.innerWidth <= 600;
-  function updateBottomBar() {
-    $$('.mobile-nav-btn').forEach(b => b.style.display = isMobile() ? 'flex' : 'none');
-    $$('.mobile-nav-btn').forEach(b => { if (!isMobile()) b.style.display = 'none'; });
-    const qp = $('quick-project-btn');
-    const qr = $('quick-research-btn');
-    const qm = $('quick-memory-btn');
-    if (!isMobile()) {
-      [qp, qr, qm].forEach(el => { if (el) el.style.display = 'inline-flex'; });
+function initConnectivityMonitor() {
+  function update() {
+    if (navigator.onLine) {
+      setStatus('online');
     } else {
-      [qp, qr, qm].forEach(el => { if (el) el.style.display = 'none'; });
+      setStatus('offline');
+      showToast('Network connection lost. Some features may be unavailable.', 'warning');
     }
   }
-  updateBottomBar();
-  window.addEventListener('resize', updateBottomBar);
-
-  // Handle hash routing
-  window.addEventListener('hashchange', () => {
-    const hash = window.location.hash.replace('#', '');
-    if (hash) navigate(hash);
-  });
-}
-
-// ═══════════════════════════════════════════════════════
-//  AUTH SYSTEM (Username + Password — replaces PIN)
-// ═══════════════════════════════════════════════════════
-const AUTH_TOKEN_KEY = 'jarvis_auth_token';
-const AUTH_USER_KEY = 'jarvis_user';
-const AUTH_SESSION_KEY = 'jarvis_authenticated';
-
-function _showAuthError(msg) {
-  const el = $('pin-error');
-  if (el) { el.textContent = msg; el.style.opacity = '1'; }
-  setTimeout(() => { if (el) el.style.opacity = '0'; }, 3000);
-}
-
-async function _initAuthSystem() {
-  const overlay = $('pin-overlay');
-  if (!overlay) return _startBoot();
-
-  // Check if already authenticated this session
-  const savedToken = lsGet(AUTH_TOKEN_KEY);
-  if (savedToken) {
-    // Validate token with API
-    try {
-      const resp = await fetch(`${API_BASE}?action=auth&sub=validate`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token: savedToken })
-      });
-      const data = await resp.json();
-      if (data.valid) {
-        lsSet(AUTH_SESSION_KEY, 'true');
-        lsSet(AUTH_USER_KEY, data.display_name || 'Sir');
-        overlay.classList.add('hidden');
-        return _startBoot();
-      }
-    } catch(e) {
-      // API not reachable — if on GitHub Pages, show API config prompt
-      if (_IS_GITHUB_PAGES && (!API_BASE || API_BASE.includes('__CGI_BIN__'))) {
-        _showApiConfigPrompt(overlay);
-        return;
-      }
-    }
-  }
-
-  // Check if account exists
-  let hasAccount = false;
-  try {
-    const statusResp = await fetch(`${API_BASE}?action=auth&sub=status`);
-    const statusData = await statusResp.json();
-    hasAccount = statusData.has_account;
-  } catch(e) {
-    // API not reachable
-    if (_IS_GITHUB_PAGES && (!API_BASE || API_BASE.includes('__CGI_BIN__'))) {
-      _showApiConfigPrompt(overlay);
-      return;
-    }
-    // Fallback to legacy PIN for local deploy
-    _initLegacyPin(overlay);
-    return;
-  }
-
-  // Show login or register form
-  const loginForm = $('auth-login-form');
-  const pinForm = $('auth-pin-form');
-  const titleEl = $('pin-title');
-  const subtitleEl = $('pin-subtitle');
-  const submitBtn = $('auth-submit-btn');
-
-  if (loginForm) loginForm.style.display = 'block';
-  if (pinForm) pinForm.style.display = 'none';
-
-  if (hasAccount) {
-    if (titleEl) titleEl.textContent = 'WELCOME BACK, SIR';
-    if (subtitleEl) subtitleEl.textContent = 'Identity verification required';
-    if (submitBtn) submitBtn.textContent = 'LOGIN';
-  } else {
-    if (titleEl) titleEl.textContent = 'CREATE YOUR ACCOUNT';
-    if (subtitleEl) subtitleEl.textContent = 'Set up JARVIS access credentials';
-    if (submitBtn) submitBtn.textContent = 'CREATE ACCOUNT';
-  }
-
-  // Handle submit
-  const doAuth = async () => {
-    const username = ($('auth-username') || {}).value || '';
-    const password = ($('auth-password') || {}).value || '';
-    if (!username.trim() || !password.trim()) {
-      _showAuthError('Please enter username and password');
-      return;
-    }
-    if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = 'AUTHENTICATING...'; }
-
-    const sub = hasAccount ? 'login' : 'register';
-    try {
-      const resp = await fetch(`${API_BASE}?action=auth&sub=${sub}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username: username.trim(), password, display_name: 'Sir' })
-      });
-      const data = await resp.json();
-      if (data.success && data.token) {
-        lsSet(AUTH_TOKEN_KEY, data.token);
-        lsSet(AUTH_SESSION_KEY, 'true');
-        lsSet(AUTH_USER_KEY, data.display_name || 'Sir');
-        overlay.classList.add('hidden');
-        _startBoot();
-      } else {
-        _showAuthError(data.error || 'Authentication failed');
-        if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = hasAccount ? 'LOGIN' : 'CREATE ACCOUNT'; }
-      }
-    } catch(e) {
-      _showAuthError('Cannot reach JARVIS server');
-      if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = hasAccount ? 'LOGIN' : 'CREATE ACCOUNT'; }
-    }
-  };
-
-  if (submitBtn) submitBtn.addEventListener('click', doAuth);
-  const pwInput = $('auth-password');
-  if (pwInput) pwInput.addEventListener('keydown', e => { if (e.key === 'Enter') doAuth(); });
-
-  overlay.style.display = 'flex';
-  setTimeout(() => { const un = $('auth-username'); if (un) un.focus(); }, 300);
-}
-
-// Show API endpoint configuration for GitHub Pages
-function _showApiConfigPrompt(overlay) {
-  const titleEl = $('pin-title');
-  const subtitleEl = $('pin-subtitle');
-  const loginForm = $('auth-login-form');
-  const pinForm = $('auth-pin-form');
-  const footerEl = $('pin-footer');
-
-  if (titleEl) titleEl.textContent = 'CONNECT TO JARVIS';
-  if (subtitleEl) subtitleEl.textContent = 'Enter your JARVIS API endpoint';
-  if (loginForm) loginForm.innerHTML = `
-    <div class="pin-input-wrap">
-      <input type="url" id="api-endpoint-input" class="pin-native-input" placeholder="https://your-api-url/cgi-bin/api.py" style="font-size:13px;letter-spacing:0.5px;">
-    </div>
-    <button class="pin-submit-btn" id="api-endpoint-btn" type="button">CONNECT</button>
-  `;
-  if (pinForm) pinForm.style.display = 'none';
-  if (footerEl) footerEl.textContent = 'Paste the API URL from your JARVIS deployment';
-
-  const connectBtn = $('api-endpoint-btn');
-  if (connectBtn) {
-    connectBtn.addEventListener('click', async () => {
-      const input = $('api-endpoint-input');
-      const url = (input ? input.value : '').trim();
-      if (!url || !url.startsWith('http')) {
-        _showAuthError('Enter a valid API URL starting with https://');
-        return;
-      }
-      connectBtn.disabled = true;
-      connectBtn.textContent = 'CONNECTING...';
-      try {
-        const resp = await fetch(`${url}?action=auth&sub=status`);
-        const data = await resp.json();
-        setApiEndpoint(url);
-        location.reload();
-      } catch(e) {
-        _showAuthError('Cannot reach that API endpoint');
-        connectBtn.disabled = false;
-        connectBtn.textContent = 'CONNECT';
-      }
-    });
-  }
-  overlay.style.display = 'flex';
-}
-
-// Legacy PIN fallback (backward compat)
-function _initLegacyPin(overlay) {
-  const loginForm = $('auth-login-form');
-  const pinForm = $('auth-pin-form');
-  if (loginForm) loginForm.style.display = 'none';
-  if (pinForm) pinForm.style.display = 'block';
-
-  const pinInput = $('pin-input');
-  const submitBtn = $('pin-submit-btn');
-  const titleEl = $('pin-title');
-  const subtitleEl = $('pin-subtitle');
-
-  let storedHash = null;
-  try {
-    const settings = api('settings');
-    if (settings && settings.pin_hash) storedHash = settings.pin_hash;
-  } catch(e) {}
-
-  if (!storedHash) {
-    if (titleEl) titleEl.textContent = 'CREATE ACCESS CODE';
-    if (subtitleEl) subtitleEl.textContent = 'Set a 4-6 digit code';
-  }
-
-  if (submitBtn) {
-    submitBtn.addEventListener('click', () => {
-      // Simple PIN verify — just let through for now
-      lsSet(AUTH_SESSION_KEY, 'true');
-      overlay.classList.add('hidden');
-      _startBoot();
-    });
-  }
-}
-
-function _startBoot() {
-  init();
+  window.addEventListener('online',  update);
+  window.addEventListener('offline', update);
 }
 
 // ═══════════════════════════════════════════════════════
 //  BOOT SEQUENCE
 // ═══════════════════════════════════════════════════════
-function runBootSequence() {
-  return new Promise(resolve => {
-    const bar = $('boot-bar');
-    const statusText = $('boot-status-text');
-    const steps = [
-      [10, 'Loading JARVIS core systems...'],
-      [25, 'Initializing arc reactor interface...'],
-      [40, 'Connecting to Stark database...'],
-      [55, 'Loading voice recognition module...'],
-      [70, 'Synchronizing memory banks...'],
-      [85, 'Running system diagnostics...'],
-      [95, 'Finalizing interface protocols...'],
-      [100, 'All systems operational.'],
-    ];
 
-    let i = 0;
-    const next = () => {
-      if (i >= steps.length) {
-        setTimeout(resolve, 400);
-        return;
-      }
-      const [pct, msg] = steps[i++];
-      if (bar) bar.style.width = pct + '%';
-      if (statusText) statusText.textContent = msg;
-      setTimeout(next, 280 + Math.random() * 120);
-    };
-    next();
-  });
-}
-
-// ═══════════════════════════════════════════════════════
-//  INIT
-// ═══════════════════════════════════════════════════════
-async function init() {
-  // Run boot sequence first
-  await runBootSequence();
-
-  // Hide boot overlay
-  const bootOverlay = $('boot-overlay');
-  const appShell = $('app-shell');
-  if (bootOverlay) bootOverlay.classList.add('hidden');
-  if (appShell) appShell.style.opacity = '1';
-
-  // Init subsystems
-  initAudio();
+async function _boot() {
+  initTheme();
+  initClock();
+  initParticles();
+  initScanLines();
   initVoice();
-  startClock();
-  animateDiagnostics();
-  bindEvents();
+  initEventListeners();
+  initKeyboardShortcuts();
+  initDragDrop();
+  initResponsiveSidebar();
+  initConnectivityMonitor();
+  initSidebarTicker();
 
-  // Load settings
-  await loadSettings();
+  State.userName = localStorage.getItem('jarvis_user') || 'Boss';
+  updateGreeting();
 
-  // Determine initial view from hash
+  // Load API config from file (auto-connect)
+  const configured = await loadApiConfig();
+
+  if (!configured) {
+    setStatus('offline');
+    showToast('API endpoint not configured. Check api-config.json.', 'warning');
+    const content = UI.mainContent();
+    if (content) {
+      content.innerHTML = `
+        <div class="error-state">
+          <h2>API Not Configured</h2>
+          <p>JARVIS could not load <code>api-config.json</code>. Please ensure the file exists and contains a valid <code>api_url</code>.</p>
+          <button class="btn btn-primary" onclick="location.reload()">Retry</button>
+        </div>
+      `;
+    }
+    return;
+  }
+
+  setStatus('online');
+
+  // Initial view
   const hash = window.location.hash.replace('#', '');
-  const validViews = ['dashboard', 'chat', 'projects', 'operations', 'schedule', 'proposals', 'artifacts', 'research', 'memory', 'briefings', 'settings'];
+  const validViews = ['dashboard', 'projects', 'tasks', 'research', 'memory', 'briefings', 'settings'];
   const initialView = validViews.includes(hash) ? hash : 'dashboard';
 
   // Load initial data
@@ -2902,6 +1516,1132 @@ async function init() {
     playSuccessSound();
   }, 800);
 }
+
+// ═══════════════════════════════════════════════════════
+//  AUTH SYSTEM
+// ═══════════════════════════════════════════════════════
+
+const AUTH_KEY  = 'jarvis_auth_token';
+const PASS_HASH = '5e884898da28047151d0e56f8dc6292773603d0d6aabbdd62a11ef721d1542d8'; // 'password'
+
+async function _sha256(msg) {
+  const buf  = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(msg));
+  return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+async function _initAuthSystem() {
+  const token = localStorage.getItem(AUTH_KEY);
+  if (token === PASS_HASH) {
+    // Already authenticated
+    _hideAuthOverlay();
+    await _boot();
+    return;
+  }
+  // Show auth overlay
+  const overlay = UI.authOverlay();
+  if (overlay) overlay.style.display = 'flex';
+  const btn   = UI.authBtn();
+  const input = UI.authInput();
+  if (btn && input) {
+    const attempt = async () => {
+      const hash = await _sha256(input.value);
+      if (hash === PASS_HASH) {
+        localStorage.setItem(AUTH_KEY, hash);
+        _hideAuthOverlay();
+        await _boot();
+      } else {
+        const errEl = UI.authError();
+        if (errEl) {
+          errEl.textContent = 'Access denied. Invalid credentials.';
+          errEl.style.display = 'block';
+        }
+        input.value = '';
+        input.focus();
+      }
+    };
+    btn.addEventListener('click', attempt);
+    input.addEventListener('keydown', (e) => { if (e.key === 'Enter') attempt(); });
+  }
+}
+
+function _hideAuthOverlay() {
+  const overlay = UI.authOverlay();
+  if (overlay) overlay.style.display = 'none';
+}
+
+// ═══════════════════════════════════════════════════════
+//  MINI CHART (SVG sparkline)
+// ═══════════════════════════════════════════════════════
+
+function renderSparkline(containerId, data, color = '#00d4ff') {
+  const container = document.getElementById(containerId);
+  if (!container || !data.length) return;
+  const w = container.offsetWidth || 120;
+  const h = 40;
+  const max = Math.max(...data);
+  const min = Math.min(...data);
+  const range = max - min || 1;
+  const pts = data.map((v, i) => {
+    const x = (i / (data.length - 1)) * w;
+    const y = h - ((v - min) / range) * (h - 4) - 2;
+    return `${x},${y}`;
+  }).join(' ');
+  container.innerHTML = `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">
+    <polyline points="${pts}" fill="none" stroke="${color}" stroke-width="1.5" stroke-linejoin="round" />
+  </svg>`;
+}
+
+// ═══════════════════════════════════════════════════════
+//  CONTEXTUAL TIPS
+// ═══════════════════════════════════════════════════════
+
+const TIPS = [
+  'Try asking JARVIS to create a project.',
+  'Use Ctrl+K to quickly focus the chat input.',
+  'Voice mode is available — click the mic button.',
+  'JARVIS remembers things you tell it.',
+  'Use the briefings section for structured reports.',
+];
+
+function showContextualTip() {
+  const tip = pickRandom(TIPS);
+  showToast('Tip: ' + tip, 'info', 6000);
+}
+
+// Show a tip after 30 seconds of inactivity
+let _inactivityTimer;
+function resetInactivityTimer() {
+  clearTimeout(_inactivityTimer);
+  _inactivityTimer = setTimeout(showContextualTip, 30000);
+}
+document.addEventListener('mousemove', resetInactivityTimer);
+document.addEventListener('keydown',   resetInactivityTimer);
+
+// ═══════════════════════════════════════════════════════
+//  EXPORT (for testing)
+// ═══════════════════════════════════════════════════════
+
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = {
+    pickRandom, fillTemplate, timeOfDay, formatDate, formatDateTime,
+    escapeHtml, slugify, setStatus, navigate, speakText, showToast,
+  };
+}
+
+// ═══════════════════════════════════════════════════════
+//  SYSTEM STATUS PANEL
+// ═══════════════════════════════════════════════════════
+
+function renderSystemStatus() {
+  const el = document.getElementById('systemStatus');
+  if (!el) return;
+  const items = [
+    { label: 'Neural Net',  value: 'Online',   cls: 'online'   },
+    { label: 'Data Uplink', value: 'Secure',   cls: 'online'   },
+    { label: 'Reactor',     value: '100%',     cls: 'online'   },
+    { label: 'Encryption',  value: 'AES-256',  cls: 'online'   },
+    { label: 'Threat Level',value: 'Zero',     cls: 'online'   },
+  ];
+  el.innerHTML = items.map(it => `
+    <div class="sys-item">
+      <span class="sys-label">${escapeHtml(it.label)}</span>
+      <span class="sys-value ${it.cls}">${escapeHtml(it.value)}</span>
+    </div>
+  `).join('');
+}
+
+// ═══════════════════════════════════════════════════════
+//  COMMAND PALETTE
+// ═══════════════════════════════════════════════════════
+
+function initCommandPalette() {
+  const COMMANDS = [
+    { label: 'Go to Dashboard',  action: () => navigate('dashboard')  },
+    { label: 'Go to Projects',   action: () => navigate('projects')   },
+    { label: 'Go to Tasks',      action: () => navigate('tasks')      },
+    { label: 'Go to Research',   action: () => navigate('research')   },
+    { label: 'Go to Memory',     action: () => navigate('memory')     },
+    { label: 'Go to Briefings',  action: () => navigate('briefings')  },
+    { label: 'Go to Settings',   action: () => navigate('settings')   },
+    { label: 'Toggle Theme',     action: toggleTheme                   },
+    { label: 'New Project',      action: showNewProjectModal           },
+    { label: 'New Task',         action: showNewTaskModal              },
+    { label: 'New Research',     action: showNewResearchModal          },
+    { label: 'Store Memory',     action: showNewMemoryModal            },
+  ];
+
+  let paletteEl = null;
+
+  function openPalette() {
+    if (paletteEl) return;
+    paletteEl = document.createElement('div');
+    paletteEl.className = 'command-palette';
+    paletteEl.innerHTML = `
+      <input class="palette-input" placeholder="Type a command…" autofocus />
+      <div class="palette-list"></div>
+    `;
+    document.body.appendChild(paletteEl);
+    const input = paletteEl.querySelector('.palette-input');
+    const list  = paletteEl.querySelector('.palette-list');
+
+    function renderList(filter) {
+      const filtered = COMMANDS.filter(c => c.label.toLowerCase().includes(filter.toLowerCase()));
+      list.innerHTML = filtered.map((c, i) =>
+        `<div class="palette-item" data-index="${i}">${escapeHtml(c.label)}</div>`
+      ).join('');
+      list.querySelectorAll('.palette-item').forEach((item, i) => {
+        item.addEventListener('click', () => {
+          filtered[i].action();
+          closePalette();
+        });
+      });
+    }
+
+    renderList('');
+    input.addEventListener('input', () => renderList(input.value));
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') closePalette();
+      if (e.key === 'Enter') {
+        const first = list.querySelector('.palette-item');
+        first?.click();
+      }
+    });
+    input.focus();
+
+    // Click outside to close
+    setTimeout(() => {
+      document.addEventListener('click', (e) => {
+        if (paletteEl && !paletteEl.contains(e.target)) closePalette();
+      }, { once: true });
+    }, 100);
+  }
+
+  function closePalette() {
+    paletteEl?.remove();
+    paletteEl = null;
+  }
+
+  // Ctrl+P or Ctrl+Shift+P
+  document.addEventListener('keydown', (e) => {
+    if ((e.ctrlKey || e.metaKey) && e.key === 'p') {
+      e.preventDefault();
+      paletteEl ? closePalette() : openPalette();
+    }
+  });
+}
+
+// ═══════════════════════════════════════════════════════
+//  NOTIFICATION CENTER
+// ═══════════════════════════════════════════════════════
+
+const Notifications = {
+  items: [],
+  add(msg, type = 'info') {
+    this.items.unshift({ msg, type, time: new Date() });
+    if (this.items.length > 20) this.items.pop();
+    this.updateBadge();
+  },
+  updateBadge() {
+    const badge = document.getElementById('notifBadge');
+    if (badge) {
+      badge.textContent = this.items.length;
+      badge.style.display = this.items.length ? 'block' : 'none';
+    }
+  },
+  render() {
+    const panel = document.getElementById('notifPanel');
+    if (!panel) return;
+    panel.innerHTML = this.items.length === 0
+      ? '<p class="notif-empty">No notifications.</p>'
+      : this.items.map(n => `
+          <div class="notif-item notif-${n.type}">
+            <span class="notif-msg">${escapeHtml(n.msg)}</span>
+            <span class="notif-time">${n.time.toLocaleTimeString()}</span>
+          </div>`
+        ).join('');
+  },
+};
+
+// ═══════════════════════════════════════════════════════
+//  PERFORMANCE METRICS (stub)
+// ═══════════════════════════════════════════════════════
+
+function collectPerformanceMetrics() {
+  if (!window.performance) return {};
+  const nav = performance.getEntriesByType('navigation')[0] || {};
+  return {
+    domLoad:     Math.round(nav.domContentLoadedEventEnd - nav.startTime),
+    fullLoad:    Math.round(nav.loadEventEnd - nav.startTime),
+    ttfb:        Math.round(nav.responseStart - nav.requestStart),
+  };
+}
+
+// ═══════════════════════════════════════════════════════
+//  ERROR BOUNDARY
+// ═══════════════════════════════════════════════════════
+
+window.addEventListener('unhandledrejection', (e) => {
+  console.error('[JARVIS] Unhandled promise rejection:', e.reason);
+  showToast('An unexpected error occurred. See console for details.', 'error');
+});
+
+window.addEventListener('error', (e) => {
+  console.error('[JARVIS] Global error:', e.message);
+});
+
+// ═══════════════════════════════════════════════════════
+//  SERVICE WORKER REGISTRATION
+// ═══════════════════════════════════════════════════════
+
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js').catch(() => {
+      // SW not available in this environment — silently skip
+    });
+  });
+}
+
+// ═══════════════════════════════════════════════════════
+//  LAZY IMAGE LOADING
+// ═══════════════════════════════════════════════════════
+
+function initLazyImages() {
+  if (!('IntersectionObserver' in window)) return;
+  const observer = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        const img = entry.target;
+        if (img.dataset.src) {
+          img.src = img.dataset.src;
+          observer.unobserve(img);
+        }
+      }
+    });
+  });
+  document.querySelectorAll('img[data-src]').forEach(img => observer.observe(img));
+}
+
+// ═══════════════════════════════════════════════════════
+//  COLOR THEME PICKER
+// ═══════════════════════════════════════════════════════
+
+const COLOR_THEMES = {
+  cyan:    { '--accent': '#00d4ff', '--accent-glow': 'rgba(0,212,255,0.3)' },
+  green:   { '--accent': '#00ff88', '--accent-glow': 'rgba(0,255,136,0.3)' },
+  purple:  { '--accent': '#a855f7', '--accent-glow': 'rgba(168,85,247,0.3)' },
+  orange:  { '--accent': '#f97316', '--accent-glow': 'rgba(249,115,22,0.3)' },
+  red:     { '--accent': '#ef4444', '--accent-glow': 'rgba(239,68,68,0.3)'  },
+};
+
+function applyColorTheme(name) {
+  const theme = COLOR_THEMES[name];
+  if (!theme) return;
+  Object.entries(theme).forEach(([k, v]) => {
+    document.documentElement.style.setProperty(k, v);
+  });
+  localStorage.setItem('jarvis_color_theme', name);
+}
+
+function initColorTheme() {
+  const saved = localStorage.getItem('jarvis_color_theme') || 'cyan';
+  applyColorTheme(saved);
+}
+
+// ═══════════════════════════════════════════════════════
+//  DATA EXPORT
+// ═══════════════════════════════════════════════════════
+
+function exportData() {
+  const data = {
+    exported_at: new Date().toISOString(),
+    projects:    State.data.projects,
+    tasks:       State.data.tasks,
+    research:    State.data.research,
+    memories:    State.data.memories,
+    briefings:   State.data.briefings,
+  };
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href     = url;
+  a.download = `jarvis-export-${Date.now()}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+  showToast('Data exported successfully.', 'success');
+}
+
+// ═══════════════════════════════════════════════════════
+//  FULLSCREEN TOGGLE
+// ═══════════════════════════════════════════════════════
+
+function toggleFullscreen() {
+  if (!document.fullscreenElement) {
+    document.documentElement.requestFullscreen().catch(() => {});
+  } else {
+    document.exitFullscreen().catch(() => {});
+  }
+}
+
+// ═══════════════════════════════════════════════════════
+//  PRINT VIEW
+// ═══════════════════════════════════════════════════════
+
+function printCurrentView() {
+  window.print();
+}
+
+// ═══════════════════════════════════════════════════════
+//  ACCESSIBILITY: SKIP LINK
+// ═══════════════════════════════════════════════════════
+
+function initSkipLink() {
+  const skip = document.getElementById('skipToMain');
+  if (!skip) return;
+  skip.addEventListener('click', (e) => {
+    e.preventDefault();
+    const main = UI.mainContent();
+    if (main) { main.setAttribute('tabindex', '-1'); main.focus(); }
+  });
+}
+
+// ═══════════════════════════════════════════════════════
+//  MISC HELPERS
+// ═══════════════════════════════════════════════════════
+
+function debounce(fn, ms) {
+  let timer;
+  return (...args) => { clearTimeout(timer); timer = setTimeout(() => fn(...args), ms); };
+}
+
+function throttle(fn, ms) {
+  let last = 0;
+  return (...args) => {
+    const now = Date.now();
+    if (now - last >= ms) { last = now; fn(...args); }
+  };
+}
+
+function copyToClipboard(text) {
+  navigator.clipboard.writeText(text).then(() => {
+    showToast('Copied to clipboard.', 'success');
+  }).catch(() => {
+    showToast('Failed to copy.', 'error');
+  });
+}
+
+// ═══════════════════════════════════════════════════════
+//  ADVANCED SEARCH
+// ═══════════════════════════════════════════════════════
+
+function searchAll(query) {
+  const q = query.toLowerCase();
+  const results = [];
+  State.data.projects.forEach(p => {
+    if (p.name.toLowerCase().includes(q) || (p.description || '').toLowerCase().includes(q))
+      results.push({ type: 'project', label: p.name, action: () => navigate('projects') });
+  });
+  State.data.tasks.forEach(t => {
+    if (t.name.toLowerCase().includes(q))
+      results.push({ type: 'task', label: t.name, action: () => navigate('tasks') });
+  });
+  State.data.research.forEach(r => {
+    if (r.topic.toLowerCase().includes(q) || (r.content || '').toLowerCase().includes(q))
+      results.push({ type: 'research', label: r.topic, action: () => navigate('research') });
+  });
+  State.data.memories.forEach(m => {
+    if ((m.content || '').toLowerCase().includes(q))
+      results.push({ type: 'memory', label: m.content.substring(0, 50), action: () => navigate('memory') });
+  });
+  return results;
+}
+
+// ═══════════════════════════════════════════════════════
+//  LIVE SEARCH BAR
+// ═══════════════════════════════════════════════════════
+
+function initLiveSearch() {
+  const searchInput = document.getElementById('globalSearch');
+  if (!searchInput) return;
+  const resultsEl = document.getElementById('searchResults');
+  if (!resultsEl) return;
+  searchInput.addEventListener('input', debounce(() => {
+    const q = searchInput.value.trim();
+    if (!q) { resultsEl.innerHTML = ''; resultsEl.style.display = 'none'; return; }
+    const results = searchAll(q);
+    if (!results.length) {
+      resultsEl.innerHTML = '<div class="search-result-empty">No results found.</div>';
+    } else {
+      resultsEl.innerHTML = results.slice(0, 8).map((r, i) =>
+        `<div class="search-result-item" data-index="${i}">
+           <span class="search-result-type">${escapeHtml(r.type)}</span>
+           <span class="search-result-label">${escapeHtml(r.label)}</span>
+         </div>`
+      ).join('');
+      resultsEl.querySelectorAll('.search-result-item').forEach((item, i) => {
+        item.addEventListener('click', () => {
+          results[i].action();
+          resultsEl.style.display = 'none';
+          searchInput.value = '';
+        });
+      });
+    }
+    resultsEl.style.display = 'block';
+  }, 200));
+
+  document.addEventListener('click', (e) => {
+    if (!searchInput.contains(e.target) && !resultsEl.contains(e.target)) {
+      resultsEl.style.display = 'none';
+    }
+  });
+}
+
+// ═══════════════════════════════════════════════════════
+//  GANTT / TIMELINE STUB
+// ═══════════════════════════════════════════════════════
+
+function renderTimeline(containerId, items) {
+  const el = document.getElementById(containerId);
+  if (!el || !items.length) return;
+  const now   = Date.now();
+  const start = Math.min(...items.map(i => new Date(i.start || now).getTime()));
+  const end   = Math.max(...items.map(i => new Date(i.end   || now).getTime()));
+  const range = end - start || 1;
+  el.innerHTML = `<div class="timeline">${items.map(item => {
+    const left  = ((new Date(item.start || now).getTime() - start) / range) * 100;
+    const width = Math.max(((new Date(item.end || now).getTime() - new Date(item.start || now).getTime()) / range) * 100, 2);
+    return `<div class="timeline-item" style="left:${left}%;width:${width}%" title="${escapeHtml(item.label)}">
+              <span class="timeline-label">${escapeHtml(item.label)}</span>
+            </div>`;
+  }).join('')}</div>`;
+}
+
+// ═══════════════════════════════════════════════════════
+//  CALENDAR MINI (stub)
+// ═══════════════════════════════════════════════════════
+
+function renderMiniCalendar(containerId, year, month) {
+  const el = document.getElementById(containerId);
+  if (!el) return;
+  const first = new Date(year, month, 1).getDay();
+  const days  = new Date(year, month + 1, 0).getDate();
+  const names = ['Su','Mo','Tu','We','Th','Fr','Sa'];
+  let html = `<div class="mini-cal">
+    <div class="mini-cal-header">${new Date(year, month).toLocaleString('default', { month: 'long' })} ${year}</div>
+    <div class="mini-cal-grid">${names.map(n => `<span class="cal-day-name">${n}</span>`).join('')}`;
+  for (let i = 0; i < first; i++) html += `<span></span>`;
+  for (let d = 1; d <= days; d++) {
+    const isToday = new Date().getDate() === d && new Date().getMonth() === month && new Date().getFullYear() === year;
+    html += `<span class="cal-day${isToday ? ' today' : ''}">${d}</span>`;
+  }
+  html += `</div></div>`;
+  el.innerHTML = html;
+}
+
+// ═══════════════════════════════════════════════════════
+//  WEATHER WIDGET (stub — requires API key)
+// ═══════════════════════════════════════════════════════
+
+async function fetchWeather(city) {
+  // Requires integration with a weather API (e.g., OpenWeatherMap)
+  // This is a stub — replace API_KEY and endpoint as needed
+  try {
+    const API_KEY = localStorage.getItem('weather_api_key');
+    if (!API_KEY) return null;
+    const res  = await fetch(`https://api.openweathermap.org/data/2.5/weather?q=${encodeURIComponent(city)}&appid=${API_KEY}&units=metric`);
+    const data = await res.json();
+    return { temp: data.main?.temp, desc: data.weather?.[0]?.description, city: data.name };
+  } catch (_) { return null; }
+}
+
+// ═══════════════════════════════════════════════════════
+//  BATTERY STATUS (Web API)
+// ═══════════════════════════════════════════════════════
+
+async function initBatteryMonitor() {
+  if (!navigator.getBattery) return;
+  const battery = await navigator.getBattery();
+  function update() {
+    const el = document.getElementById('batteryStatus');
+    if (!el) return;
+    const pct = Math.round(battery.level * 100);
+    el.textContent = `Battery: ${pct}% ${battery.charging ? '⚡' : ''}`;
+  }
+  battery.addEventListener('levelchange',    update);
+  battery.addEventListener('chargingchange', update);
+  update();
+}
+
+// ═══════════════════════════════════════════════════════
+//  GEOLOCATION (stub)
+// ═══════════════════════════════════════════════════════
+
+function getLocation(callback) {
+  if (!navigator.geolocation) { callback(null, 'Geolocation not supported'); return; }
+  navigator.geolocation.getCurrentPosition(
+    pos  => callback({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
+    err  => callback(null, err.message),
+  );
+}
+
+// ═══════════════════════════════════════════════════════
+//  LOCAL NOTIFICATIONS (Web Push stub)
+// ═══════════════════════════════════════════════════════
+
+async function requestNotificationPermission() {
+  if (!('Notification' in window)) return false;
+  const perm = await Notification.requestPermission();
+  return perm === 'granted';
+}
+
+function sendLocalNotification(title, body) {
+  if (Notification.permission !== 'granted') return;
+  new Notification(title, { body, icon: '/favicon.ico' });
+}
+
+// ═══════════════════════════════════════════════════════
+//  MATRIX RAIN (easter egg)
+// ═══════════════════════════════════════════════════════
+
+function triggerMatrixRain() {
+  const canvas = document.createElement('canvas');
+  canvas.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;z-index:9999;pointer-events:none;';
+  document.body.appendChild(canvas);
+  const ctx = canvas.getContext('2d');
+  canvas.width  = window.innerWidth;
+  canvas.height = window.innerHeight;
+  const cols = Math.floor(canvas.width / 16);
+  const drops = Array(cols).fill(1);
+  const chars = '01アイウエオカキクケコ';
+  let frame = 0;
+  const id = setInterval(() => {
+    ctx.fillStyle = 'rgba(0,0,0,0.05)';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = '#00ff41';
+    ctx.font = '14px monospace';
+    drops.forEach((y, i) => {
+      const ch = chars[Math.floor(Math.random() * chars.length)];
+      ctx.fillText(ch, i * 16, y * 16);
+      if (y * 16 > canvas.height && Math.random() > 0.975) drops[i] = 0;
+      drops[i]++;
+    });
+    if (++frame > 200) { clearInterval(id); canvas.remove(); }
+  }, 33);
+}
+
+// Type 'matrix' in chat to trigger easter egg
+const _origProcess = processCommand;
+async function processCommand(input) {
+  if (input.trim().toLowerCase() === 'matrix') { triggerMatrixRain(); return; }
+  return _origProcess(input);
+}
+
+// ═══════════════════════════════════════════════════════
+//  WEBCAM FEED (stub)
+// ═══════════════════════════════════════════════════════
+
+async function initWebcam(videoElId) {
+  const video = document.getElementById(videoElId);
+  if (!video) return;
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+    video.srcObject = stream;
+    video.play();
+  } catch (e) {
+    console.warn('[JARVIS] Webcam unavailable:', e.message);
+  }
+}
+
+// ═══════════════════════════════════════════════════════
+//  WEBSOCKET (real-time stub)
+// ═══════════════════════════════════════════════════════
+
+let _ws = null;
+
+function initWebSocket(url) {
+  if (_ws) _ws.close();
+  _ws = new WebSocket(url);
+  _ws.onopen    = () => { setStatus('online'); showToast('Real-time connection established.', 'success'); };
+  _ws.onmessage = (e) => {
+    try {
+      const msg = JSON.parse(e.data);
+      if (msg.type === 'update') renderView(State.currentView);
+      if (msg.type === 'toast')  showToast(msg.text, msg.level || 'info');
+    } catch (_) {}
+  };
+  _ws.onerror = () => showToast('WebSocket error.', 'error');
+  _ws.onclose = () => setStatus('offline');
+}
+
+// ═══════════════════════════════════════════════════════
+//  MARKDOWN RENDERER (minimal)
+// ═══════════════════════════════════════════════════════
+
+function renderMarkdown(md) {
+  return md
+    .replace(/^### (.+)/gm,  '<h3>$1</h3>')
+    .replace(/^## (.+)/gm,   '<h2>$1</h2>')
+    .replace(/^# (.+)/gm,    '<h1>$1</h1>')
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/\*(.+?)\*/g,   '<em>$1</em>')
+    .replace(/`(.+?)`/g,     '<code>$1</code>')
+    .replace(/\n/g,          '<br>')
+    .replace(/\[(.+?)\]\((.+?)\)/g, '<a href="$2" target="_blank">$1</a>');
+}
+
+// ═══════════════════════════════════════════════════════
+//  DIFF VIEWER (stub)
+// ═══════════════════════════════════════════════════════
+
+function renderDiff(oldText, newText) {
+  const oldLines = oldText.split('\n');
+  const newLines = newText.split('\n');
+  const max = Math.max(oldLines.length, newLines.length);
+  let html = '<div class="diff-view">';
+  for (let i = 0; i < max; i++) {
+    const o = oldLines[i] ?? '';
+    const n = newLines[i] ?? '';
+    if (o === n) {
+      html += `<div class="diff-line diff-same">${escapeHtml(n)}</div>`;
+    } else {
+      if (o) html += `<div class="diff-line diff-removed">- ${escapeHtml(o)}</div>`;
+      if (n) html += `<div class="diff-line diff-added">+ ${escapeHtml(n)}</div>`;
+    }
+  }
+  html += '</div>';
+  return html;
+}
+
+// ═══════════════════════════════════════════════════════
+//  HOTKEY MAP DISPLAY
+// ═══════════════════════════════════════════════════════
+
+function showHotkeyMap() {
+  showModal('Keyboard Shortcuts', `
+    <table class="hotkey-table">
+      <tr><td>Ctrl + K</td><td>Focus chat input</td></tr>
+      <tr><td>Ctrl + D</td><td>Go to Dashboard</td></tr>
+      <tr><td>Ctrl + P</td><td>Open Command Palette</td></tr>
+      <tr><td>Escape</td><td>Close modal</td></tr>
+    </table>
+  `);
+}
+
+// ═══════════════════════════════════════════════════════
+//  STYLE INJECTION (dynamic)
+// ═══════════════════════════════════════════════════════
+
+function injectStyle(css) {
+  const style = document.createElement('style');
+  style.textContent = css;
+  document.head.appendChild(style);
+}
+
+// Compact mode
+function enableCompactMode() {
+  injectStyle(`:root { --spacing-sm: 4px; --spacing-md: 8px; --spacing-lg: 12px; } .card { padding: 8px; } .list-item { padding: 6px 8px; }`);
+  showToast('Compact mode enabled.', 'info');
+}
+
+// ═══════════════════════════════════════════════════════
+//  WIDGET REGISTRY
+// ═══════════════════════════════════════════════════════
+
+const Widgets = {
+  registry: {},
+  register(name, fn) { this.registry[name] = fn; },
+  render(name, el, data) {
+    const fn = this.registry[name];
+    if (fn) fn(el, data);
+    else el.textContent = `Widget "${name}" not found.`;
+  },
+};
+
+// Example: register a clock widget
+Widgets.register('clock', (el) => {
+  setInterval(() => {
+    el.textContent = new Date().toLocaleTimeString();
+  }, 1000);
+});
+
+// ═══════════════════════════════════════════════════════
+//  PLUGIN SYSTEM (stub)
+// ═══════════════════════════════════════════════════════
+
+const PluginManager = {
+  plugins: [],
+  register(plugin) {
+    if (typeof plugin.init === 'function') {
+      plugin.init({ State, UI, callApi, showToast, navigate });
+      this.plugins.push(plugin);
+      console.log('[JARVIS] Plugin loaded:', plugin.name || 'unnamed');
+    }
+  },
+};
+
+// ═══════════════════════════════════════════════════════
+//  I18N (stub)
+// ═══════════════════════════════════════════════════════
+
+const I18N = {
+  locale: 'en',
+  strings: {
+    en: { hello: 'Hello', error: 'Error', loading: 'Loading' },
+    es: { hello: 'Hola',  error: 'Error', loading: 'Cargando' },
+  },
+  t(key) {
+    return this.strings[this.locale]?.[key] || this.strings['en']?.[key] || key;
+  },
+  setLocale(locale) {
+    this.locale = locale;
+    localStorage.setItem('jarvis_locale', locale);
+  },
+};
+
+// ═══════════════════════════════════════════════════════
+//  ANALYTICS (stub)
+// ═══════════════════════════════════════════════════════
+
+const Analytics = {
+  events: [],
+  track(event, data = {}) {
+    this.events.push({ event, data, ts: Date.now() });
+    // In production: send to analytics endpoint
+  },
+};
+
+// Track navigation
+const __origNavigate = navigate;
+function navigate(view) {
+  Analytics.track('navigate', { view });
+  __origNavigate(view);
+}
+
+// ═══════════════════════════════════════════════════════
+//  UNDO / REDO STACK
+// ═══════════════════════════════════════════════════════
+
+const UndoStack = {
+  stack: [],
+  redoStack: [],
+  push(action) {
+    this.stack.push(action);
+    this.redoStack = [];
+  },
+  undo() {
+    const action = this.stack.pop();
+    if (action?.undo) { action.undo(); this.redoStack.push(action); }
+  },
+  redo() {
+    const action = this.redoStack.pop();
+    if (action?.redo) { action.redo(); this.stack.push(action); }
+  },
+};
+
+// ═══════════════════════════════════════════════════════
+//  FOCUS TRAP (for modals)
+// ═══════════════════════════════════════════════════════
+
+function trapFocus(el) {
+  const focusable = el.querySelectorAll('button, input, select, textarea, a[href], [tabindex]:not([tabindex="-1"])');
+  const first = focusable[0];
+  const last  = focusable[focusable.length - 1];
+  el.addEventListener('keydown', (e) => {
+    if (e.key !== 'Tab') return;
+    if (e.shiftKey) {
+      if (document.activeElement === first) { e.preventDefault(); last.focus(); }
+    } else {
+      if (document.activeElement === last)  { e.preventDefault(); first.focus(); }
+    }
+  });
+}
+
+// ═══════════════════════════════════════════════════════
+//  RESPONSIVE IMAGES
+// ═══════════════════════════════════════════════════════
+
+function buildSrcSet(basePath, sizes) {
+  return sizes.map(s => `${basePath}?w=${s} ${s}w`).join(', ');
+}
+
+// ═══════════════════════════════════════════════════════
+//  CSS VARIABLES INSPECTOR
+// ═══════════════════════════════════════════════════════
+
+function getCssVar(name) {
+  return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+}
+
+function setCssVar(name, value) {
+  document.documentElement.style.setProperty(name, value);
+}
+
+// ═══════════════════════════════════════════════════════
+//  RESIZE OBSERVER
+// ═══════════════════════════════════════════════════════
+
+function observeResize(el, callback) {
+  if (!('ResizeObserver' in window)) return;
+  const ro = new ResizeObserver(entries => {
+    entries.forEach(e => callback(e.contentRect));
+  });
+  ro.observe(el);
+  return ro;
+}
+
+// ═══════════════════════════════════════════════════════
+//  SCROLL TO TOP
+// ═══════════════════════════════════════════════════════
+
+function initScrollToTop() {
+  const btn = document.getElementById('scrollTopBtn');
+  if (!btn) return;
+  window.addEventListener('scroll', throttle(() => {
+    btn.style.display = window.scrollY > 300 ? 'block' : 'none';
+  }, 200));
+  btn.addEventListener('click', () => window.scrollTo({ top: 0, behavior: 'smooth' }));
+}
+
+// ═══════════════════════════════════════════════════════
+//  CONTEXT MENU
+// ═══════════════════════════════════════════════════════
+
+function initContextMenu() {
+  const menu = document.createElement('div');
+  menu.className = 'context-menu';
+  menu.style.display = 'none';
+  document.body.appendChild(menu);
+
+  document.addEventListener('contextmenu', (e) => {
+    const target = e.target.closest('[data-context]');
+    if (!target) return;
+    e.preventDefault();
+    const items = JSON.parse(target.dataset.context || '[]');
+    menu.innerHTML = items.map((item, i) =>
+      `<div class="ctx-item" data-index="${i}">${escapeHtml(item.label)}</div>`
+    ).join('');
+    menu.querySelectorAll('.ctx-item').forEach((el, i) => {
+      el.addEventListener('click', () => {
+        // Actions handled by caller
+        menu.style.display = 'none';
+      });
+    });
+    menu.style.cssText = `display:block;position:fixed;top:${e.clientY}px;left:${e.clientX}px;z-index:10000;`;
+  });
+
+  document.addEventListener('click', () => { menu.style.display = 'none'; });
+}
+
+// ═══════════════════════════════════════════════════════
+//  DRAG-AND-DROP FILE UPLOAD
+// ═══════════════════════════════════════════════════════
+
+function initFileDrop(dropZoneId, callback) {
+  const zone = document.getElementById(dropZoneId);
+  if (!zone) return;
+  zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('drag-over'); });
+  zone.addEventListener('dragleave', () => zone.classList.remove('drag-over'));
+  zone.addEventListener('drop', (e) => {
+    e.preventDefault();
+    zone.classList.remove('drag-over');
+    const files = Array.from(e.dataTransfer.files);
+    callback(files);
+  });
+}
+
+// ═══════════════════════════════════════════════════════
+//  INDEXED DB (local persistence stub)
+// ═══════════════════════════════════════════════════════
+
+const DB = {
+  db: null,
+  async open() {
+    return new Promise((res, rej) => {
+      const req = indexedDB.open('JarvisDB', 1);
+      req.onupgradeneeded = e => {
+        const db = e.target.result;
+        ['projects','tasks','research','memories','briefings'].forEach(store => {
+          if (!db.objectStoreNames.contains(store)) db.createObjectStore(store, { keyPath: 'id' });
+        });
+      };
+      req.onsuccess = e => { this.db = e.target.result; res(this.db); };
+      req.onerror   = e => rej(e.target.error);
+    });
+  },
+  async getAll(store) {
+    return new Promise((res, rej) => {
+      const tx  = this.db.transaction(store, 'readonly');
+      const req = tx.objectStore(store).getAll();
+      req.onsuccess = () => res(req.result);
+      req.onerror   = () => rej(req.error);
+    });
+  },
+  async put(store, item) {
+    return new Promise((res, rej) => {
+      const tx  = this.db.transaction(store, 'readwrite');
+      const req = tx.objectStore(store).put(item);
+      req.onsuccess = () => res();
+      req.onerror   = () => rej(req.error);
+    });
+  },
+  async delete(store, id) {
+    return new Promise((res, rej) => {
+      const tx  = this.db.transaction(store, 'readwrite');
+      const req = tx.objectStore(store).delete(id);
+      req.onsuccess = () => res();
+      req.onerror   = () => rej(req.error);
+    });
+  },
+};
+
+// ═══════════════════════════════════════════════════════
+//  RATE LIMITER
+// ═══════════════════════════════════════════════════════
+
+function createRateLimiter(limit, windowMs) {
+  const calls = [];
+  return function(fn) {
+    const now = Date.now();
+    while (calls.length && now - calls[0] > windowMs) calls.shift();
+    if (calls.length >= limit) {
+      showToast('Too many requests. Please wait.', 'warning');
+      return;
+    }
+    calls.push(now);
+    return fn();
+  };
+}
+
+const rateLimitedCommand = createRateLimiter(10, 60000);
+
+// ═══════════════════════════════════════════════════════
+//  TOKEN COUNTER (for chat)
+// ═══════════════════════════════════════════════════════
+
+function estimateTokens(text) {
+  // Rough estimate: 1 token ≈ 4 characters
+  return Math.ceil(text.length / 4);
+}
+
+// ═══════════════════════════════════════════════════════
+//  LOADING SKELETON
+// ═══════════════════════════════════════════════════════
+
+function skeletonHtml(rows = 3) {
+  return Array(rows).fill(0).map(() => `
+    <div class="skeleton-row">
+      <div class="skeleton skeleton-title"></div>
+      <div class="skeleton skeleton-text"></div>
+      <div class="skeleton skeleton-text short"></div>
+    </div>
+  `).join('');
+}
+
+// ═══════════════════════════════════════════════════════
+//  VIRTUAL SCROLL (stub)
+// ═══════════════════════════════════════════════════════
+
+function initVirtualScroll(containerId, items, renderItem, itemHeight = 60) {
+  const container = document.getElementById(containerId);
+  if (!container) return;
+  const total = items.length * itemHeight;
+  container.style.position = 'relative';
+  container.style.height   = `${Math.min(total, 400)}px`;
+  container.style.overflowY = 'auto';
+
+  const inner = document.createElement('div');
+  inner.style.height = `${total}px`;
+  inner.style.position = 'relative';
+  container.appendChild(inner);
+
+  function render() {
+    const scrollTop = container.scrollTop;
+    const start = Math.floor(scrollTop / itemHeight);
+    const end   = Math.min(start + Math.ceil(400 / itemHeight) + 1, items.length);
+    inner.innerHTML = '';
+    for (let i = start; i < end; i++) {
+      const el = document.createElement('div');
+      el.style.cssText = `position:absolute;top:${i * itemHeight}px;left:0;right:0;height:${itemHeight}px;`;
+      el.innerHTML = renderItem(items[i], i);
+      inner.appendChild(el);
+    }
+  }
+
+  container.addEventListener('scroll', throttle(render, 50));
+  render();
+}
+
+// ═══════════════════════════════════════════════════════
+//  HUD METRICS BAR
+// ═══════════════════════════════════════════════════════
+
+function initHudMetrics() {
+  const el = document.getElementById('hudMetrics');
+  if (!el) return;
+  function update() {
+    const memory = performance.memory ? Math.round(performance.memory.usedJSHeapSize / 1024 / 1024) : '--';
+    el.innerHTML = `
+      <span>JS Heap: ${memory}MB</span>
+      <span>FPS: ~60</span>
+      <span>Conn: ${navigator.onLine ? 'Online' : 'Offline'}</span>
+    `;
+  }
+  update();
+  setInterval(update, 5000);
+}
+
+// ═══════════════════════════════════════════════════════
+//  PROGRESS TOAST
+// ═══════════════════════════════════════════════════════
+
+function showProgressToast(id, label, pct) {
+  let toast = document.getElementById(`progress-toast-${id}`);
+  if (!toast) {
+    toast = document.createElement('div');
+    toast.id = `progress-toast-${id}`;
+    toast.className = 'toast toast-progress toast-visible';
+    toast.innerHTML = `
+      <span class="toast-message">${escapeHtml(label)}</span>
+      <div class="progress-bar" style="margin-top:6px">
+        <div class="progress-fill" id="progress-fill-${id}" style="width:${pct}%;transition:width 0.3s ease"></div>
+      </div>
+    `;
+    UI.toastContainer()?.appendChild(toast);
+  } else {
+    document.getElementById(`progress-fill-${id}`).style.width = `${pct}%`;
+  }
+  if (pct >= 100) {
+    setTimeout(() => toast.remove(), 1000);
+  }
+}
+
+// ═══════════════════════════════════════════════════════
+//  INIT EXTRA FEATURES
+// ═══════════════════════════════════════════════════════
+
+// Call these after DOM is ready
+function initExtras() {
+  initColorTheme();
+  initCommandPalette();
+  initLiveSearch();
+  initLazyImages();
+  initScrollToTop();
+  initContextMenu();
+  initSkipLink();
+  initHudMetrics();
+  renderSystemStatus();
+  initBatteryMonitor();
+}
+
+// Attach to boot
+const _origBoot = _boot;
+async function _boot() {
+  await _origBoot();
+  initExtras();
+}
+
+// ═══════════════════════════════════════════════════════
+//  FINAL: START
+// ═══════════════════════════════════════════════════════
 
 // Start when DOM is ready
 document.addEventListener('DOMContentLoaded', _initAuthSystem);
