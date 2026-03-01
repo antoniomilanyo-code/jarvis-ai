@@ -6,9 +6,9 @@
 
 'use strict';
 
-// ████████████████████████████████████████████████████████
+// ══════════════════════════════════════════════════════════
 //  CONFIGURATION
-// ████████████████████████████████████████████████████████
+// ══════════════════════════════════════════════════════════
 // Remote API with in-memory cache (server-backed)
 
 const JARVIS_RESPONSES = {
@@ -67,9 +67,9 @@ const JARVIS_RESPONSES = {
 • "status" — System diagnostics report`,
 };
 
-// ████████████████████████████████████████████████████████
+// ══════════════════════════════════════════════════════════
 //  APPLICATION STATE
-// ████████████████████████████████████████████████████████
+// ══════════════════════════════════════════════════════════
 const State = {
   currentView: 'dashboard',
   currentProjectId: null,
@@ -122,9 +122,9 @@ function _unlockAudio() {
   _elAudio.play().then(() => { _elAudio.pause(); _elAudio.volume = 1; }).catch(() => {});
 }
 
-// ████████████████████████████████████████████████████████
+// ══════════════════════════════════════════════════════════
 //  UTILITIES
-// ████████████████████████████████████████████████████████
+// ══════════════════════════════════════════════════════════
 const $ = id => document.getElementById(id);
 const $$ = sel => document.querySelectorAll(sel);
 
@@ -261,9 +261,9 @@ function escHtml(str) {
   return d.innerHTML;
 }
 
-// ████████████████████████████████████████████████████████
+// ══════════════════════════════════════════════════════════
 //  AUDIO ENGINE — Web Audio API tones
-// ████████████████████████████████████████████████████████
+// ══════════════════════════════════════════════════════════
 function initAudio() {
   try {
     State.audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -301,9 +301,9 @@ function playVoiceStartSound() {
   setTimeout(() => playTone(1100, 80, 'sine', 0.05), 80);
 }
 
-// ████████████████████████████████████████████████████████
+// ══════════════════════════════════════════════════════════
 //  TOAST NOTIFICATIONS
-// ████████████████████████████████████████████████████████
+// ══════════════════════════════════════════════════════════
 function showToast(msg, duration = 3500) {
   const container = $('toast-container');
   const toast = document.createElement('div');
@@ -316,9 +316,9 @@ function showToast(msg, duration = 3500) {
   }, duration);
 }
 
-// ████████████████████████████████████████████████████████
+// ══════════════════════════════════════════════════════════
 //  CLOCK & GREETING
-// ████████████████████████████████████████████████████████
+// ══════════════════════════════════════════════════════════
 function startClock() {
   function update() {
     const now = new Date();
@@ -343,9 +343,9 @@ function updateGreeting() {
   }
 }
 
-// ████████████████████████████████████████████████████████
+// ══════════════════════════════════════════════════════════
 //  DIAGNOSTICS ANIMATION
-// ████████████████████████████████████████████████████████
+// ══════════════════════════════════════════════════════════
 function animateDiagnostics() {
   function jitter(base, range) {
     return Math.min(99, Math.max(1, base + (Math.random() - 0.5) * range));
@@ -369,9 +369,9 @@ function animateDiagnostics() {
   }, 2500);
 }
 
-// ████████████████████████████████████████████████████████
+// ══════════════════════════════════════════════════════════
 //  ROUTING — View Navigation
-// ████████████████████████████████████████████████████████
+// ══════════════════════════════════════════════════════════
 function navigate(viewName) {
   if (!viewName) return;
   playNavSound();
@@ -414,9 +414,9 @@ function navigate(viewName) {
   else if (viewName === 'settings') loadSettings();
 }
 
-// ████████████████████████████████████████████████████████
+// ══════════════════════════════════════════════════════════
 //  KPI COUNTER ANIMATION
-// ████████████████████████████████████████████████████████
+// ══════════════════════════════════════════════════════════
 function animateCount(el, target) {
   if (!el) return;
   const start = parseInt(el.textContent) || 0;
@@ -432,9 +432,9 @@ function animateCount(el, target) {
   requestAnimationFrame(step);
 }
 
-// ████████████████████████████████████████████████████████
+// ══════════════════════════════════════════════════════════
 //  DASHBOARD
-// ████████████████████████████████████████████████████████
+// ══════════════════════════════════════════════════════════
 async function loadDashboard() {
   const [projects, memories, operations, convos, scheduledTasks] = await Promise.all([
     api('projects'),
@@ -464,11 +464,11 @@ async function loadDashboard() {
       activityEl.innerHTML = '<div style="color:var(--text-faint);font-family:var(--font-mono);font-size:var(--text-xs)">No recent activity</div>';
     } else {
       activityEl.innerHTML = recent.map(c => `
-  <div style="display:flex;gap:var(--sp-3);align-items:flex-start;padding:var(--sp-2) 0;border-bottom:1px solid var(--border-dim)">
-    <span style="font-family:var(--font-mono);font-size:var(--text-xs);color:var(--accent-cyan);width:40px;flex-shrink:0">${c.role === 'user' ? 'YOU' : 'J.A.R.'}</span>
-    <span style="font-size:var(--text-xs);color:var(--text-muted);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(c.content)}</span>
-  </div>
-`).join('');
+        <div style="display:flex;gap:var(--sp-3);align-items:flex-start;padding:var(--sp-2) 0;border-bottom:1px solid var(--border-dim)">
+          <span style="font-family:var(--font-mono);font-size:var(--text-xs);color:var(--accent-cyan);width:40px;flex-shrink:0">${c.role === 'user' ? 'YOU' : 'J.A.R.'}</span>
+          <span style="font-size:var(--text-xs);color:var(--text-muted);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(c.content)}</span>
+        </div>
+      `).join('');
     }
   }
 
@@ -491,9 +491,9 @@ async function loadDashboard() {
   }
 }
 
-// ████████████████████████████████████████████████████████
+// ══════════════════════════════════════════════════════════
 //  CHAT
-// ████████████████████████████████████████████████████████
+// ══════════════════════════════════════════════════════════
 async function loadChat() {
   const convos = await api('conversations', 'GET', null, 'limit=100') || [];
   const container = $('chat-messages');
@@ -594,9 +594,9 @@ async function sendMessage(inputEl) {
   speak(response);
 }
 
-// ████████████████████████████████████████████████████████
+// ══════════════════════════════════════════════════════════
 //  COMMAND PROCESSOR
-// ████████████████████████████████████████████████████████
+// ══════════════════════════════════════════════════════════
 async function processCommand(input) {
   const raw = input.trim();
   const lower = raw.toLowerCase();
@@ -709,9 +709,9 @@ async function processCommand(input) {
   return fillTemplate(pickRandom(JARVIS_RESPONSES.unknown));
 }
 
-// ████████████████████████████████████████████████████████
+// ══════════════════════════════════════════════════════════
 //  PROJECTS
-// ████████████████████████████████████████████████████████
+// ══════════════════════════════════════════════════════════
 async function loadProjects() {
   const [projects, tasks] = await Promise.all([
     api('projects'),
@@ -841,9 +841,9 @@ async function updateProjectStatus(id, status) {
   showToast(`Project status updated to ${status}`);
 }
 
-// ████████████████████████████████████████████████████████
+// ══════════════════════════════════════════════════════════
 //  OPERATIONS
-// ████████████████████████████████████████████████████████
+// ══════════════════════════════════════════════════════════
 async function loadOperations() {
   const ops = await api('operations') || [];
   const container = $('operations-list');
@@ -891,9 +891,9 @@ async function createOperation() {
   loadOperations();
 }
 
-// ████████████████████████████████████████████████████████
+// ══════════════════════════════════════════════════════════
 //  RESEARCH
-// ████████████████████████████████████████████████████████
+// ══════════════════════════════════════════════════════════
 async function loadResearch() {
   const entries = await api('research') || [];
   const container = $('research-list');
@@ -935,9 +935,9 @@ async function addResearch() {
   loadResearch();
 }
 
-// ████████████████████████████████████████████████████████
+// ══════════════════════════════════════════════════════════
 //  SCHEDULE
-// ████████████████████████████████████████████████████████
+// ══════════════════════════════════════════════════════════
 async function loadSchedule() {
   const tasks = await api('scheduled_tasks') || [];
   const container = $('schedule-list');
@@ -986,9 +986,9 @@ async function addScheduledTask() {
   loadSchedule();
 }
 
-// ████████████████████████████████████████████████████████
+// ══════════════════════════════════════════════════════════
 //  MEMORY
-// ████████████████████████████████████████████████████████
+// ══════════════════════════════════════════════════════════
 async function loadMemory() {
   const memories = await api('memories') || [];
   const container = $('memory-list');
@@ -1026,9 +1026,9 @@ async function addMemory() {
   loadMemory();
 }
 
-// ████████████████████████████████████████████████████████
+// ══════════════════════════════════════════════════════════
 //  SETTINGS
-// ████████████████████████████████████████████████████████
+// ══════════════════════════════════════════════════════════
 async function loadSettings() {
   const settings = await api('settings');
 
@@ -1122,9 +1122,9 @@ function applySettings(s) {
   if (s.el_model) State.elevenLabs.model = s.el_model;
 }
 
-// ████████████████████████████████████████████████████████
+// ══════════════════════════════════════════════════════════
 //  VOICE ENGINE — Web Speech API + ElevenLabs TTS
-// ████████████████████████████████████████████████████████
+// ══════════════════════════════════════════════════════════
 
 // ── ElevenLabs TTS ────────────────────────────────────────────────────
 async function speakElevenLabs(text) {
@@ -1394,9 +1394,9 @@ function _drawVizFrame() {
   requestAnimationFrame(_drawVizFrame);
 }
 
-// ████████████████████████████████████████████████████████
+// ══════════════════════════════════════════════════════════
 //  KEYBOARD SHORTCUTS
-// ████████████████████████████████████████████████████████
+// ══════════════════════════════════════════════════════════
 function initKeyboardShortcuts() {
   document.addEventListener('keydown', (e) => {
     // Space bar = toggle voice (when not in input)
@@ -1421,9 +1421,9 @@ function initKeyboardShortcuts() {
   });
 }
 
-// ████████████████████████████████████████████████████████
+// ══════════════════════════════════════════════════════════
 //  INITIALISATION
-// ████████████████████████████████████████████████████████
+// ══════════════════════════════════════════════════════════
 async function init() {
   initAudio();
   startClock();
@@ -1447,22 +1447,16 @@ async function init() {
 
   // Greet user
   setTimeout(() => {
-    speak(fillTemplate(pickRandom(JARVIS_RESPONSES.greetings), { time: timeOfDay() }));
-  }, 1200);
-
-  // Start wake word if enabled
-  if (State.wakeWordActive) startWakeWordListener();
-
-  // Unlock audio on first interaction
-  document.addEventListener('click', _unlockAudio, { once: true });
-  document.addEventListener('keydown', _unlockAudio, { once: true });
-
-  console.log('JARVIS v7.3.1 — All systems online');
+    const greeting = fillTemplate(pickRandom(JARVIS_RESPONSES.greetings), { time: timeOfDay(), name: State.userName });
+    speakText(greeting);
+    updateGreeting();
+    playSuccessSound();
+  }, 800);
 }
 
-// ████████████████████████████████████████████████████████
+// ══════════════════════════════════════════════════════════
 //  EVENT BINDINGS — Chat form
-// ████████████████████████████████████████████████████████
+// ══════════════════════════════════════════════════════════
 function initChatForm() {
   const form = $('chat-form');
   const input = $('chat-input');
@@ -1480,9 +1474,9 @@ function initChatForm() {
   }
 }
 
-// ████████████████████████████████████████████████████████
+// ══════════════════════════════════════════════════════════
 //  PIN LOCK SYSTEM
-// ████████████████████████████████████████████████████████
+// ══════════════════════════════════════════════════════════
 const PIN_KEY = 'jarvis_pin';
 const PIN_ENABLED_KEY = 'jarvis_pin_enabled';
 const PIN_LOCKED_KEY = 'jarvis_locked';
@@ -1628,8 +1622,5 @@ function _initPinSystem() {
   init();
 }
 
-// Boot sequence — wait for DOM
-document.addEventListener('DOMContentLoaded', () => {
-  // Small delay for smooth load
-  setTimeout(_initPinSystem, 800);
-});
+// Start when DOM is ready
+document.addEventListener('DOMContentLoaded', _initPinSystem);
