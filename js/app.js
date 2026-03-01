@@ -128,7 +128,7 @@ function _unlockAudio() {
 const $ = id => document.getElementById(id);
 const $$ = sel => document.querySelectorAll(sel);
 
-// ── In-memory cache helpers ──────────────────────────────
+// ── In-memory cache helpers ──────────────────────────────────────
 const _memCache = {};
 function lsGet(table) {
   return _memCache[table] || null;
@@ -163,7 +163,7 @@ const DEFAULT_SETTINGS = {
   el_model: 'eleven_multilingual_v2',
 };
 
-// ── Remote API Configuration ─────────────────────────
+// ── Remote API Configuration ───────────────────────────────────
 const API_BASE = '__CGI_BIN__/api.py';
 
 async function api(action, method = 'GET', body = null, params = '') {
@@ -200,7 +200,7 @@ async function api(action, method = 'GET', body = null, params = '') {
       }
     }
 
-    // ── ALL OTHER TABLES: fetch from remote API ─────────────
+    // ── ALL OTHER TABLES: fetch from remote API ────────────────────
     let url = `${API_BASE}?action=${encodeURIComponent(action)}`;
     if (params) url += '&' + params;
 
@@ -221,7 +221,7 @@ async function api(action, method = 'GET', body = null, params = '') {
     return data;
   } catch (err) {
     console.warn(`API ${action} failed, falling back to cache:`, err);
-    // ── Offline fallback: use memory cache ──────────
+    // ── Offline fallback: use memory cache ──────────────
     if (action === 'settings') {
       return Object.assign({}, DEFAULT_SETTINGS, lsGet('settings') || {});
     }
@@ -410,6 +410,8 @@ function navigate(viewName) {
   else if (viewName === 'operations') loadOperations();
   else if (viewName === 'research') loadResearch();
   else if (viewName === 'schedule') loadSchedule();
+  else if (viewName === 'proposals') loadProposals();
+  else if (viewName === 'artifacts') loadArtifacts();
   else if (viewName === 'memory') loadMemory();
   else if (viewName === 'settings') loadSettings();
 }
@@ -436,12 +438,13 @@ function animateCount(el, target) {
 //  DASHBOARD
 // ═══════════════════════════════════════════════════════
 async function loadDashboard() {
-  const [projects, memories, operations, convos, scheduledTasks] = await Promise.all([
+  const [projects, memories, operations, convos, scheduledTasks, proposals] = await Promise.all([
     api('projects'),
     api('memories'),
     api('operations'),
     api('conversations'),
     api('scheduled_tasks'),
+    api('task_proposals'),
   ]);
 
   const activeProjects = (projects || []).filter(p => p.status.toLowerCase() === 'active').length;
@@ -449,12 +452,14 @@ async function loadDashboard() {
   const totalOps = (operations || []).length;
   const totalConvos = (convos || []).length;
   const pendingScheduled = (scheduledTasks || []).filter(t => t.status !== 'completed').length;
+  const pendingProposals = (proposals || []).filter(p => p.status === 'pending_approval').length;
 
   animateCount($('kpi-projects'), activeProjects);
   animateCount($('kpi-memories'), totalMemories);
   animateCount($('kpi-operations'), totalOps);
   animateCount($('kpi-convos'), totalConvos);
   animateCount($('kpi-schedule-count'), pendingScheduled);
+  animateCount($('kpi-proposals-pending'), pendingProposals);
 
   // Recent activity
   const activityEl = $('recent-activity');
@@ -1541,6 +1546,149 @@ async function loadSchedule() {
 }
 
 // ═══════════════════════════════════════════════════════
+//  TASK PROPOSALS (P1)
+// ═══════════════════════════════════════════════════════
+async function loadProposals() {
+  const proposals = await api('task_proposals') || [];
+
+  const pending = proposals.filter(p => p.status === 'pending_approval').length;
+  const approved = proposals.filter(p => p.status === 'approved' || p.status === 'executing' || p.status === 'completed').length;
+  const rejected = proposals.filter(p => p.status === 'rejected').length;
+
+  animateCount($('kpi-pending-proposals'), pending);
+  animateCount($('kpi-approved-proposals'), approved);
+  animateCount($('kpi-rejected-proposals'), rejected);
+
+  const list = $('proposals-list');
+  if (!list) return;
+
+  if (proposals.length === 0) {
+    list.innerHTML = `
+      <div style="text-align:center;padding:var(--sp-16);color:var(--text-muted)">
+        <div style="font-family:var(--font-display);font-size:var(--text-lg);margin-bottom:var(--sp-3)">No task proposals yet</div>
+        <div style="font-size:var(--text-sm)">JARVIS will propose tasks autonomously during conversations. Approve or reject via WhatsApp.</div>
+      </div>`;
+    return;
+  }
+
+  // Sort: pending first, then by date desc
+  const sorted = [...proposals].sort((a, b) => {
+    if (a.status === 'pending_approval' && b.status !== 'pending_approval') return -1;
+    if (b.status === 'pending_approval' && a.status !== 'pending_approval') return 1;
+    return (b.id || 0) - (a.id || 0);
+  });
+
+  list.innerHTML = sorted.map(p => {
+    const statusColors = {
+      'pending_approval': { bg: '#f59e0b22', border: '#f59e0b44', color: '#f59e0b', label: 'PENDING' },
+      'approved': { bg: '#10b98122', border: '#10b98144', color: '#10b981', label: 'APPROVED' },
+      'rejected': { bg: '#ef444422', border: '#ef444444', color: '#ef4444', label: 'REJECTED' },
+      'executing': { bg: '#00d4ff22', border: '#00d4ff44', color: '#00d4ff', label: 'EXECUTING' },
+      'completed': { bg: '#10b98122', border: '#10b98144', color: '#10b981', label: 'COMPLETED' },
+    };
+    const s = statusColors[p.status] || statusColors['pending_approval'];
+    const priorityColors = { low: '#475569', medium: '#00d4ff', high: '#f0a500', critical: '#ff3b5c' };
+    const pColor = priorityColors[p.priority] || '#00d4ff';
+
+    // Parse steps if available
+    let steps = [];
+    try { steps = JSON.parse(p.steps_json || '[]'); } catch {}
+
+    const isPending = p.status === 'pending_approval';
+
+    return `
+      <div class="hud-panel" style="padding:var(--sp-5);margin-bottom:var(--sp-4);border-left:3px solid ${s.color}">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:var(--sp-3);margin-bottom:var(--sp-3)">
+          <div style="flex:1">
+            <div style="font-family:var(--font-mono);font-size:var(--text-sm);font-weight:600;color:var(--text-primary);margin-bottom:var(--sp-1)">${escHtml(p.title)}</div>
+            ${p.description ? `<div style="font-size:var(--text-xs);color:var(--text-muted);margin-bottom:var(--sp-2)">${escHtml(p.description)}</div>` : ''}
+          </div>
+          <div style="display:flex;gap:var(--sp-2);align-items:center;flex-shrink:0">
+            <span style="font-family:var(--font-mono);font-size:10px;padding:2px 8px;border-radius:var(--radius-sm);background:${s.bg};color:${s.color};border:1px solid ${s.border}">${s.label}</span>
+            <span style="font-family:var(--font-mono);font-size:10px;padding:2px 8px;border-radius:var(--radius-sm);color:${pColor};text-transform:uppercase">${escHtml(p.priority || 'medium')}</span>
+          </div>
+        </div>
+        ${steps.length > 0 ? `
+          <div style="margin-bottom:var(--sp-3)">
+            <div style="font-family:var(--font-mono);font-size:10px;color:var(--text-faint);text-transform:uppercase;margin-bottom:var(--sp-2)">Execution Steps</div>
+            <ol style="margin:0;padding-left:var(--sp-5);font-size:var(--text-xs);color:var(--text-muted)">
+              ${steps.map(st => `<li style="margin-bottom:2px">${escHtml(typeof st === 'string' ? st : st.description || JSON.stringify(st))}</li>`).join('')}
+            </ol>
+          </div>` : ''}
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <span style="font-family:var(--font-mono);font-size:var(--text-xs);color:var(--text-faint)">${formatDateTime(p.created_at)}</span>
+          ${isPending ? `
+            <div style="display:flex;gap:var(--sp-2)">
+              <button onclick="approveProposal(${p.id})" class="btn btn-primary" style="font-size:var(--text-xs);padding:4px 12px">APPROVE</button>
+              <button onclick="rejectProposal(${p.id})" class="btn btn-danger" style="font-size:var(--text-xs);padding:4px 12px">REJECT</button>
+            </div>` : ''}
+          ${p.status === 'rejected' && p.rejection_reason ? `<span style="font-size:var(--text-xs);color:#ef4444;font-style:italic">${escHtml(p.rejection_reason)}</span>` : ''}
+        </div>
+      </div>`;
+  }).join('');
+}
+
+window.approveProposal = async function(id) {
+  await api('task_proposals', 'PUT', { id, status: 'approved', approved_at: new Date().toISOString() }, `id=${id}`);
+  playSuccessSound();
+  showToast('Proposal approved.');
+  loadProposals();
+};
+
+window.rejectProposal = async function(id) {
+  const reason = prompt('Rejection reason (optional):') || '';
+  await api('task_proposals', 'PUT', { id, status: 'rejected', rejection_reason: reason }, `id=${id}`);
+  playClickSound();
+  showToast('Proposal rejected.');
+  loadProposals();
+};
+
+// ═══════════════════════════════════════════════════════
+//  ARTIFACTS (P2)
+// ═══════════════════════════════════════════════════════
+async function loadArtifacts() {
+  const artifacts = await api('artifacts') || [];
+  const grid = $('artifacts-grid');
+  if (!grid) return;
+
+  if (artifacts.length === 0) {
+    grid.innerHTML = `
+      <div style="grid-column:1/-1;text-align:center;padding:var(--sp-16);color:var(--text-muted)">
+        <div style="font-family:var(--font-display);font-size:var(--text-lg);margin-bottom:var(--sp-3)">No artifacts generated</div>
+        <div style="font-size:var(--text-sm)">JARVIS will store generated files, reports, and documents here.</div>
+      </div>`;
+    return;
+  }
+
+  const typeIcons = {
+    'pdf': '📄', 'document': '📝', 'image': '🖼️', 'spreadsheet': '📊',
+    'presentation': '📽️', 'code': '💻', 'audio': '🎵', 'video': '🎤',
+    'report': '📋', 'analysis': '🔬', 'design': '🎨', 'other': '📁'
+  };
+
+  grid.innerHTML = artifacts.map(a => {
+    const icon = typeIcons[a.type] || typeIcons['other'];
+    const hasUrl = a.file_url && a.file_url.startsWith('http');
+
+    return `
+      <div class="hud-panel" style="padding:var(--sp-5)">
+        <div style="display:flex;align-items:center;gap:var(--sp-3);margin-bottom:var(--sp-3)">
+          <span style="font-size:1.5rem">${icon}</span>
+          <div style="flex:1;min-width:0">
+            <div style="font-family:var(--font-mono);font-size:var(--text-sm);font-weight:600;color:var(--text-primary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(a.title)}</div>
+            <div style="font-family:var(--font-mono);font-size:10px;color:var(--text-faint);text-transform:uppercase">${escHtml(a.type || 'file')}</div>
+          </div>
+        </div>
+        ${a.description ? `<div style="font-size:var(--text-xs);color:var(--text-muted);margin-bottom:var(--sp-3)">${escHtml(a.description)}</div>` : ''}
+        ${a.content_json && a.content_json !== '{}' ? `<div style="font-size:10px;color:var(--text-faint);font-family:var(--font-mono);margin-bottom:var(--sp-3);word-break:break-all">${escHtml(typeof a.content_json === 'string' ? a.content_json.slice(0, 120) : JSON.stringify(a.content_json).slice(0, 120))}</div>` : ''}
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <span style="font-family:var(--font-mono);font-size:var(--text-xs);color:var(--text-faint)">${formatDateTime(a.created_at)}</span>
+          ${hasUrl ? `<a href="${escHtml(a.file_url)}" target="_blank" rel="noopener" style="font-family:var(--font-mono);font-size:var(--text-xs);color:var(--accent-cyan);text-decoration:none">OPEN →</a>` : ''}
+        </div>
+      </div>`;
+  }).join('');
+}
+// ═══════════════════════════════════════════════════════
 //  RESEARCH
 // ═══════════════════════════════════════════════════════
 async function loadResearch() {
@@ -2431,7 +2579,7 @@ async function init() {
 
   // Determine initial view from hash
   const hash = window.location.hash.replace('#', '');
-  const validViews = ['dashboard', 'chat', 'projects', 'operations', 'schedule', 'research', 'memory', 'settings'];
+  const validViews = ['dashboard', 'chat', 'projects', 'operations', 'schedule', 'proposals', 'artifacts', 'research', 'memory', 'settings'];
   const initialView = validViews.includes(hash) ? hash : 'dashboard';
 
   // Load initial data
