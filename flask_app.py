@@ -395,14 +395,15 @@ def handle_auth(conn, method, params, body):
                 return {"valid": True, "user": AUTH_USER}, 200
             return {"valid": False}, 401
         
-        # Login (sub=login or sub=create — both do the same with hardcoded creds)
+        # Login (sub=login or sub=create or sub=register — all do the same with hardcoded creds)
         username = body.get('username', '').lower().strip()
         password = body.get('password', '')
+        display_name = body.get('display_name', 'Sir')
         pass_hash = hashlib.sha256(password.encode()).hexdigest()
         if username == AUTH_USER and pass_hash == AUTH_PASS_HASH:
             token = secrets.token_hex(32)
             TOKENS[token] = datetime.utcnow() + timedelta(days=30)
-            return {"token": token, "expires_in": 30*24*3600, "user": username}, 200
+            return {"success": True, "token": token, "expires_in": 30*24*3600, "user": username, "display_name": display_name}, 200
         return {"error": "Invalid credentials"}, 401
     return {"error": "Method not allowed"}, 405
 
