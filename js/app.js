@@ -170,10 +170,16 @@ const DEFAULT_SETTINGS = {
 let API_BASE = '__CGI_BIN__/api.py';
 let _apiReady = null; // Promise that resolves when API_BASE is set
 
-// Detect if we're running on GitHub Pages (static, no CGI backend)
+// Detect hosting environment
 const _IS_GITHUB_PAGES = location.hostname.endsWith('.github.io') || location.hostname.endsWith('.pages.dev');
+const _IS_PYTHONANYWHERE = location.hostname.endsWith('.pythonanywhere.com');
 
-if (_IS_GITHUB_PAGES) {
+if (_IS_PYTHONANYWHERE) {
+  // PythonAnywhere Flask backend — use relative API path with CGI compat route
+  API_BASE = '/cgi-bin/api.py';
+  _apiReady = Promise.resolve();
+  console.log('[JARVIS] PythonAnywhere detected — API:', API_BASE);
+} else if (_IS_GITHUB_PAGES) {
   // Auto-load API endpoint from api-config.json (updated by each deploy)
   _apiReady = fetch('./api-config.json?t=' + Date.now())
     .then(r => r.json())
@@ -266,7 +272,7 @@ function pickRandom(arr) {
 }
 
 function fillTemplate(str, vars = {}) {
-  return str.replace(/\{(\w+)\}/g, (_, k) => vars[k] || State.userName || 'Sir');
+  return str.replace(/(\w+)\}/g, (_, k) => vars[k] || State.userName || 'Sir');
 }
 
 function timeOfDay() {
