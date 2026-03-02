@@ -379,8 +379,24 @@ def api_handler():
 # ═══════════════════════════════════════════════════════
 
 def handle_auth(conn, method, params, body):
+    sub = params.get('sub', 'login')
+    
+    # GET: status check — always report account exists (hardcoded auth)
+    if method == 'GET':
+        if sub == 'status':
+            return {"has_account": True, "auth_type": "password"}, 200
+        return {"has_account": True}, 200
+    
     if method == 'POST':
-        username = body.get('username', '')
+        if sub == 'validate':
+            # Validate existing token
+            token = body.get('token', '')
+            if token and token in TOKENS and TOKENS[token] > datetime.utcnow():
+                return {"valid": True, "user": AUTH_USER}, 200
+            return {"valid": False}, 401
+        
+        # Login (sub=login or sub=create — both do the same with hardcoded creds)
+        username = body.get('username', '').lower().strip()
         password = body.get('password', '')
         pass_hash = hashlib.sha256(password.encode()).hexdigest()
         if username == AUTH_USER and pass_hash == AUTH_PASS_HASH:
@@ -388,7 +404,7 @@ def handle_auth(conn, method, params, body):
             TOKENS[token] = datetime.utcnow() + timedelta(days=30)
             return {"token": token, "expires_in": 30*24*3600, "user": username}, 200
         return {"error": "Invalid credentials"}, 401
-    return {"error": "POST required"}, 400
+    return {"error": "Method not allowed"}, 405
 
 def handle_conversations(conn, method, params, body):
     if method == 'GET':
