@@ -697,6 +697,35 @@
           </div>
         </div>
 
+        <!-- Gemini Brain Engine -->
+        <div class="settings-section">
+          <div class="settings-section-title">
+            <span>Gemini Brain Engine</span>
+            <span class="gemini-status-dot" id="gemini-status-dot" style="width:8px;height:8px;border-radius:50%;background:#666;display:inline-block;margin-left:8px"></span>
+          </div>
+          <div style="font-size:11px;color:var(--text-muted);margin-bottom:12px;line-height:1.4">
+            Gemini Flash powers JARVIS conversation understanding. Get a free API key from 
+            <a href="https://aistudio.google.com/apikey" target="_blank" style="color:var(--accent)">Google AI Studio</a>.
+          </div>
+          <div class="settings-field">
+            <label class="settings-label" for="setting-gemini-apikey">Gemini API Key</label>
+            <input type="password" class="settings-input" id="setting-gemini-apikey" placeholder="AIza..." autocomplete="off">
+            <span style="font-size:10px;color:var(--text-faint);margin-top:2px">Free tier: 1,500 requests/day — no credit card needed</span>
+          </div>
+          <div class="settings-field">
+            <label class="settings-label" for="setting-gemini-model">Model</label>
+            <select class="settings-select" id="setting-gemini-model">
+              <option value="gemini-3-flash-preview">Gemini 3 Flash (Fastest)</option>
+              <option value="gemini-2.5-flash">Gemini 2.5 Flash (Stable)</option>
+              <option value="gemini-2.0-flash">Gemini 2.0 Flash (Legacy)</option>
+            </select>
+          </div>
+          <div class="settings-field" style="flex-direction:row;align-items:center;gap:var(--sp-3)">
+            <button class="btn btn-secondary" id="test-gemini-btn" onclick="testGeminiConnection()">Test Connection</button>
+            <span style="font-size:var(--text-xs);color:var(--text-muted)" id="gemini-test-status">Verify Gemini API connectivity</span>
+          </div>
+        </div>
+
         <!-- Appearance -->
         <div class="settings-section">
           <div class="settings-section-title">Interface Parameters</div>
