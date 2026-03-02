@@ -2164,6 +2164,18 @@ async function loadSettings() {
   populateVoiceSelector();
   updateGreeting();
 
+  // Gemini Brain Engine
+  if (settings.gemini_apikey) {
+    const el = $('setting-gemini-apikey');
+    if (el) el.value = settings.gemini_apikey;
+    const dot = $('gemini-status-dot');
+    if (dot) dot.style.background = '#00ff88';
+  }
+  if (settings.gemini_model) {
+    const el = $('setting-gemini-model');
+    if (el) el.value = settings.gemini_model;
+  }
+
   // Continuous mode & wake word — load from settings and auto-enable
   const cmEnabled = settings.continuous_mode === 'true' || settings.continuous_mode === true;
   State.continuousMode = cmEnabled;
@@ -2196,6 +2208,9 @@ async function saveSettings() {
     // Voice modes
     continuous_mode: $('setting-continuous')?.checked ? 'true' : 'false',
     wake_word: $('setting-wakeword')?.checked ? 'true' : 'false',
+    // Gemini Brain Engine
+    gemini_apikey: $('setting-gemini-apikey')?.value || '',
+    gemini_model: $('setting-gemini-model')?.value || 'gemini-3-flash-preview',
   };
 
   State.userName = settings.user_name;
@@ -2227,6 +2242,8 @@ async function saveSettings() {
   }
 
   await api('settings', 'POST', settings);
+  // Also sync Gemini key to conversation handler
+  if (window._saveGeminiKey) window._saveGeminiKey();
   _updateElStatusDot();
   updateGreeting();
   playSuccessSound();
@@ -2632,3 +2649,57 @@ function bindEvents() {
 
 
 // Auth system loaded from auth.js
+
+// ═══ Gemini Brain Engine ═══
+async function testGeminiConnection() {
+  const statusEl = $('gemini-test-status');
+  const dotEl = $('gemini-status-dot');
+  const key = $('setting-gemini-apikey')?.value?.trim();
+  if (!key) {
+    if (statusEl) { statusEl.textContent = 'Please enter an API key first'; statusEl.style.color = '#ff4444'; }
+    return;
+  }
+  if (statusEl) { statusEl.textContent = 'Testing...'; statusEl.style.color = 'var(--text-muted)'; }
+  
+  try {
+    // Save the key to conversation handler first
+    const convBase = API_BASE.replace('/api.py', '/conversation.py');
+    const saveResp = await fetch(`${convBase}?action=set_key`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ key })
+    });
+    const saveData = await saveResp.json();
+    
+    if (saveData.test_result === 'success') {
+      if (statusEl) { statusEl.textContent = 'Connected — Gemini Brain active'; statusEl.style.color = '#00ff88'; }
+      if (dotEl) dotEl.style.background = '#00ff88';
+    } else {
+      if (statusEl) { statusEl.textContent = 'Key saved but test failed — check key'; statusEl.style.color = '#ffaa00'; }
+      if (dotEl) dotEl.style.background = '#ffaa00';
+    }
+  } catch (e) {
+    if (statusEl) { statusEl.textContent = 'Connection error: ' + e.message; statusEl.style.color = '#ff4444'; }
+    if (dotEl) dotEl.style.background = '#ff4444';
+  }
+}
+
+// Also save Gemini key to conversation handler when settings are saved
+const _origSaveSettings = typeof saveSettings === 'function' ? saveSettings : null;
+if (_origSaveSettings) {
+  const _wrappedSave = saveSettings;
+  // Hook into save to also sync Gemini key
+  window._saveGeminiKey = async function() {
+    const key = $('setting-gemini-apikey')?.value?.trim();
+    if (key) {
+      try {
+        const convBase = API_BASE.replace('/api.py', '/conversation.py');
+        await fetch(`${convBase}?action=set_key`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ key })
+        });
+      } catch(e) { console.warn('Gemini key sync failed:', e); }
+    }
+  };
+}
